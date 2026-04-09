@@ -48,7 +48,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
           <div key={label} className={`flex ${isFullMode ? 'flex-col lg:flex-row lg:items-center' : 'items-center'} justify-between bg-gray-50 p-3 px-4 rounded-xl border border-gray-200 gap-4`}>
             <div className="flex-1 text-base text-gray-800">
               <span className="font-bold text-blue-700 mr-2 text-lg">{label}.</span>
-              {isFullMode && <SafeLatex>{data?.[`opt_${label.toLowerCase()}`]}</SafeLatex>}
+              {isFullMode && <span>{data?.[opt_${opt.toLowerCase()}]}</span>}
             </div>
             <div className="flex gap-2 shrink-0">
               {['T', 'F'].map(val => (
@@ -93,7 +93,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
           <span className={`${isFullMode ? 'mr-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center' : ''}`}>
             {opt}
           </span>
-          {isFullMode && <SafeLatex>{data?.[`opt_${opt.toLowerCase()}`]}</SafeLatex>}
+          {isFullMode && <span>{data?.[opt_${opt.toLowerCase()}]}</span>}
         </button>
       ))}
     </div>
@@ -422,7 +422,7 @@ export default function Quiz() {
                   <div className="bg-white rounded-3xl p-6 md:p-8 border border-transparent hover:border-blue-100 hover:shadow-xl hover:shadow-blue-50/50 transition-all">
                     <div className="text-xl mb-8 leading-relaxed text-gray-800 font-medium">
                       <span className="lg:hidden font-black text-blue-600 mr-2 italic">Câu {index + 1}:</span>
-                      <SafeLatex>{q?.question_bank?.content}</SafeLatex>
+                      <span>{q?.question_bank?.content}</span>
                     </div>
 
                     {q?.question_bank?.image_url && (
