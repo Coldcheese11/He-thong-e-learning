@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import SafeLatex from './SafeLatex';
 import { ChevronUp, ChevronDown, Clock, AlertTriangle, CheckCircle, Send, Layout, BookOpen } from 'lucide-react';
+import { Worker, Viewer } from '@react-pdf-viewer/core';
+import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 
 // =========================================================================
 // HÀM XÁO TRỘN MẢNG (Thuật toán Fisher-Yates)
@@ -116,10 +120,27 @@ export default function Quiz() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const { data: exData, error: exError } = await supabase.from('exams').select('*').eq('id', id).single();
-        if (exError) throw exError;
-        setExam(exData);
-        setTimeLeft(exData.duration * 60);
+        const studentId = localStorage.getItem('user_id');
+
+        // --- BƯỚC MỚI: KIỂM TRA XEM HỌC SINH ĐÃ LÀM BÀI CHƯA ---
+        const { data: existingAttempt, error: checkError } = await supabase
+          .from('student_attempts')
+          .select('*')
+          .eq('exam_id', id)
+          .eq('student_id', studentId)
+          .maybeSingle(); // Trả về null nếu chưa có bản ghi nào
+
+        if (existingAttempt) {
+          alert("Hệ thống ghi nhận bạn đã hoàn thành bài thi này trước đó!");
+          // Chuyển hướng sang trang kết quả ngay lập tức
+          navigate('/result', { 
+            state: { 
+              score: existingAttempt.total_score, 
+              isReview: true // Gửi thêm cờ này để trang Result biết là đang xem lại
+            } 
+          });
+          return; // Dừng hàm tại đây, không chạy các lệnh load đề phía dưới
+        }
 
         const { data: qData, error: qError } = await supabase
           .from('exam_questions')
@@ -313,31 +334,17 @@ export default function Quiz() {
       <div className="flex flex-1 overflow-hidden relative">
         {exam?.pdf_url && !exam.pdf_url.toLowerCase().endsWith('.tex') ? (
           <>
-            {/* --- BÊN TRÁI: XEM FILE PDF (SỬ DỤNG GOOGLE VIEWER ĐỂ TRỊ SAFARI) --- */}
-            <div className="w-full md:w-[65%] h-full bg-gray-200 relative flex flex-col">
-              
-              {/* Nút cứu cánh (Vẫn nên giữ để chuyên nghiệp) */}
-              <div className="absolute top-3 right-3 z-50 md:hidden">
-                <a 
-                  href={exam.pdf_url} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl"
-                >
-                  <Send size={14} /> Mở file gốc
-                </a>
+            {/* --- BÊN TRÁI: HIỂN THỊ PDF CHUẨN AZOTA --- */}
+              <div className="w-full md:w-[65%] h-full bg-gray-100 overflow-hidden relative border-r">
+                <div className="h-full w-full overflow-y-auto custom-scrollbar">
+                  <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+                    <Viewer 
+                      fileUrl={exam.pdf_url}
+                      plugins={[defaultLayoutPlugin()]} 
+                    />
+                  </Worker>
+                </div>
               </div>
-
-              <div className="flex-1 w-full h-full overflow-hidden">
-                <iframe 
-                  /* Dùng Google Docs Viewer để bọc link PDF của bạn */
-                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(exam.pdf_url)}&embedded=true`}
-                  className="w-full h-full border-none"
-                  style={{ width: '100%', height: '100%' }}
-                  title="PDF Content"
-                />
-              </div>
-            </div>
 
             {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) - GIỮ NGUYÊN PHẦN DƯỚI CỦA BẠN */}
             <div className={`
