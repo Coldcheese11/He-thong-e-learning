@@ -313,17 +313,41 @@ export default function Quiz() {
       <div className="flex flex-1 overflow-hidden relative">
         {exam?.pdf_url && !exam.pdf_url.toLowerCase().endsWith('.tex') ? (
           <>
-            {/* LUỒNG 1: ĐỀ PDF (BỐ CỤC AZOTA) */}
-            <div className="w-full md:w-[65%] h-full bg-gray-200 overflow-hidden relative">
-              <iframe 
-                src={`${exam.pdf_url}#toolbar=0&navpanes=0&scrollbar=1`} 
-                className="w-full h-full border-none"
-                style={{ minHeight: '100%' }} // Đảm bảo PDF luôn lấy hết chiều cao container
-                title="PDF Exam" 
-              />
+            {/* --- BÊN TRÁI: XEM FILE PDF (ĐÃ FIX LỖI CUỘN TRÊN IPHONE) --- */}
+            <div 
+              className="w-full md:w-[65%] h-full bg-gray-200 relative flex flex-col overflow-y-auto" 
+              style={{ WebkitOverflowScrolling: 'touch' }} // Lệnh quan trọng cho iOS
+            >
+              {/* Nút hỗ trợ mở PDF rời (Cứu cánh khi Safari quá lag) */}
+              <div className="absolute top-3 right-3 z-50 md:hidden">
+                <a 
+                  href={exam.pdf_url} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-2xl border border-white/20"
+                >
+                  <Send size={14} /> Mở PDF rời
+                </a>
+              </div>
+
+              <div className="flex-1 w-full h-full">
+                <object
+                  data={`${exam.pdf_url}#toolbar=0&navpanes=0&scrollbar=1`}
+                  type="application/pdf"
+                  className="w-full h-full min-h-[100.1%]"
+                >
+                  <iframe 
+                    src={`${exam.pdf_url}#toolbar=0&navpanes=0&scrollbar=1`} 
+                    className="w-full h-full border-none"
+                    title="PDF Content"
+                  >
+                    <p>Trình duyệt không hỗ trợ xem PDF. <a href={exam.pdf_url}>Tải về tại đây.</a></p>
+                  </iframe>
+                </object>
+              </div>
             </div>
 
-            {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) */}
+            {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) - GIỮ NGUYÊN PHẦN DƯỚI CỦA BẠN */}
             <div className={`
               fixed bottom-0 left-0 w-full bg-white z-40 transition-all duration-500 ease-in-out shadow-[0_-15px_50px_rgba(0,0,0,0.2)]
               md:static md:w-[35%] md:h-full md:shadow-none md:translate-y-0 md:border-l
