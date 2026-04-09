@@ -116,32 +116,45 @@ export default function Quiz() {
   const [violations, setViolations] = useState(0);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
-  // 1. TẢI DỮ LIỆU & XÁO ĐỀ
+// 1. TẢI DỮ LIỆU & KIỂM TRA CHỐNG THI LẠI
   useEffect(() => {
     const loadData = async () => {
       try {
         const studentId = localStorage.getItem('user_id');
 
-        // --- BƯỚC MỚI: KIỂM TRA XEM HỌC SINH ĐÃ LÀM BÀI CHƯA ---
-        const { data: existingAttempt, error: checkError } = await supabase
+        // BƯỚC 0: Kiểm tra nếu chưa đăng nhập (Trường hợp hay bị trên mobile)
+        if (!studentId) {
+          alert("Vui lòng đăng nhập lại!");
+          navigate('/login');
+          return;
+        }
+
+        // BƯỚC 1: Kiểm tra xem học sinh đã làm bài chưa
+        const { data: existingAttempt } = await supabase
           .from('student_attempts')
           .select('*')
           .eq('exam_id', id)
           .eq('student_id', studentId)
-          .maybeSingle(); // Trả về null nếu chưa có bản ghi nào
+          .maybeSingle();
 
         if (existingAttempt) {
-          alert("Hệ thống ghi nhận bạn đã hoàn thành bài thi này trước đó!");
-          // Chuyển hướng sang trang kết quả ngay lập tức
-          navigate('/result', { 
-            state: { 
-              score: existingAttempt.total_score, 
-              isReview: true // Gửi thêm cờ này để trang Result biết là đang xem lại
-            } 
-          });
-          return; // Dừng hàm tại đây, không chạy các lệnh load đề phía dưới
+          alert("Hệ thống ghi nhận bạn đã hoàn thành bài thi này!");
+          navigate('/result', { state: { score: existingAttempt.total_score, isReview: true } });
+          return;
         }
 
+        // BƯỚC 2: Lấy thông tin đề thi (exData) - ĐOẠN NÀY BẠN BỊ THIẾU
+        const { data: exData, error: exError } = await supabase
+          .from('exams')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (exError) throw exError;
+        setExam(exData); // Lưu vào state
+        setTimeLeft(exData.duration * 60);
+
+        // BƯỚC 3: Lấy danh sách câu hỏi (qData)
         const { data: qData, error: qError } = await supabase
           .from('exam_questions')
           .select('question_id, question_bank(*)')
