@@ -591,59 +591,127 @@ const SmartUpload = () => {
               
               {/* === 1. BẢNG ĐỤC LỖ DÀNH RIÊNG CHO PDF === */}
               {fileType === 'pdf' && (
-                <>
-                  <div className="flex justify-between items-center border-b pb-3 mb-4 shrink-0">
-                    <h3 className="font-bold text-gray-800 text-lg">Bảng Đáp Án Nhanh (PDF)</h3>
-                    <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                      <span className="text-sm font-bold text-blue-800">Số câu:</span>
-                      <input type="number" min="1" value={numPdfQuestions} onChange={e => setNumPdfQuestions(Number(e.target.value) || 1)} className="w-14 px-1 py-1 rounded text-center font-bold outline-none" />
+                  <>
+                    {/* HEADER BẢNG ĐÁP ÁN */}
+                    <div className="flex justify-between items-center border-b pb-3 mb-4 shrink-0">
+                      <h3 className="font-bold text-gray-800 text-lg">Bảng Đáp Án Nhanh (PDF)</h3>
+                      <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                        <span className="text-sm font-bold text-blue-800">Số câu:</span>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          value={numPdfQuestions} 
+                          onChange={e => setNumPdfQuestions(Number(e.target.value) || 1)} 
+                          className="w-14 px-1 py-1 rounded text-center font-bold outline-none" 
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto pr-3 custom-scrollbar">
-                    
-                    {/* ĐÃ FIX: Auto chuyển 1 cột nếu màn chật, 2-3 cột nếu màn rộng */}
-                    <div className={`grid gap-x-6 gap-y-3 ${showLeftPanel ? 'grid-cols-1' : 'grid-cols-2 xl:grid-cols-3'}`}>
-                      {Array.from({ length: numPdfQuestions }, (_, i) => i + 1).map(qNum => (
-                        <div key={qNum} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors shadow-sm">
-                          
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-sm text-gray-800 w-12">Câu {qNum}</span>
-                            <button 
-                              onClick={() => togglePdfQuestionType(qNum)} 
-                              className={`text-xs font-bold px-2 py-1.5 rounded transition-colors ${pdfQuestionTypes[qNum] === 'fill_blank' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-                            >
-                              {pdfQuestionTypes[qNum] === 'fill_blank' ? 'Điền khuyết' : 'Trắc nghiệm'}
-                            </button>
-                          </div>
 
-                          <div className="flex gap-2 flex-1 justify-end ml-4">
-                            {pdfQuestionTypes[qNum] === 'fill_blank' ? (
-                              <input 
-                                type="text" 
-                                value={pdfAnswers[qNum] || ''} 
-                                onChange={(e) => handlePdfAnswerSelect(qNum, e.target.value)} 
-                                placeholder="Nhập đáp án..." 
-                                className="w-full max-w-[160px] px-3 py-1.5 border border-purple-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-purple-500 font-bold text-purple-700 bg-white"
-                              />
-                            ) : (
-                              ['A', 'B', 'C', 'D'].map(opt => (
-                                <button 
-                                  key={opt} 
-                                  onClick={() => handlePdfAnswerSelect(qNum, opt)} 
-                                  className={`w-9 h-9 rounded-full font-bold text-sm shadow-sm transition-transform ${pdfAnswers[qNum] === opt ? 'bg-blue-600 text-white scale-110' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-200'}`}
+                    <div className="flex-1 overflow-y-auto pr-3 custom-scrollbar">
+                      {/* GRID CÂU HỎI: Tự co giãn theo màn hình */}
+                      <div className={`grid gap-x-4 gap-y-4 ${showLeftPanel ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-2'}`}>
+                        {Array.from({ length: numPdfQuestions }, (_, i) => i + 1).map(qNum => {
+                          const qType = pdfQuestionTypes[qNum] || 'multiple_choice';
+
+                          return (
+                            <div key={qNum} className="flex flex-col p-4 bg-gray-50 hover:bg-gray-100 rounded-2xl border border-gray-200 transition-colors shadow-sm gap-3">
+                              
+                              {/* 1. DÒNG TIÊU ĐỀ & CHỌN LOẠI CÂU HỎI */}
+                              <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-black text-gray-400 italic text-sm">CÂU {qNum}</span>
+                                </div>
+                                
+                                <select 
+                                  value={qType}
+                                  onChange={(e) => {
+                                    const newType = e.target.value;
+                                    setPdfQuestionTypes(prev => ({ ...prev, [qNum]: newType }));
+                                    // Reset đáp án để tránh rác dữ liệu khi đổi loại
+                                    if (newType === 'true_false') setPdfAnswers(prev => ({ ...prev, [qNum]: '?,?,?,?' }));
+                                    else if (newType === 'multiple_choice') setPdfAnswers(prev => ({ ...prev, [qNum]: 'A' }));
+                                    else setPdfAnswers(prev => ({ ...prev, [qNum]: '' }));
+                                  }}
+                                  className={`text-[11px] font-bold px-2 py-1 rounded border outline-none transition-colors ${
+                                    qType === 'true_false' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                    qType === 'fill_blank' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                    'bg-blue-100 text-blue-700 border-blue-200'
+                                  }`}
                                 >
-                                  {opt}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                                  <option value="multiple_choice">Trắc nghiệm ABCD</option>
+                                  <option value="true_false">Đúng / Sai (2025)</option>
+                                  <option value="fill_blank">Tự luận / Điền số</option>
+                                </select>
+                              </div>
 
-                  </div>
-                </>
-              )}
+                              {/* 2. KHU VỰC NHẬP ĐÁP ÁN THEO LOẠI */}
+                              <div className="flex-1">
+                                {qType === 'fill_blank' ? (
+                                  /* Dạng Tự luận / Điền số */
+                                  <input 
+                                    type="text" 
+                                    value={pdfAnswers[qNum] || ''} 
+                                    onChange={(e) => handlePdfAnswerSelect(qNum, e.target.value)} 
+                                    placeholder="Nhập đáp án đúng..." 
+                                    className="w-full px-4 py-2 border-2 border-purple-200 rounded-xl text-sm outline-none focus:border-purple-500 font-bold text-purple-700 bg-white shadow-inner"
+                                  />
+                                ) : qType === 'true_false' ? (
+                                  /* Dạng Đúng / Sai (4 ý a, b, c, d) */
+                                  <div className="grid grid-cols-1 gap-1.5">
+                                    {['a', 'b', 'c', 'd'].map((label, idx) => {
+                                      const currentArr = (pdfAnswers[qNum] || '?,?,?,?').split(',');
+                                      return (
+                                        <div key={label} className="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-gray-100">
+                                          <span className="text-[10px] font-black text-gray-400 uppercase">Ý {label}.</span>
+                                          <div className="flex gap-1">
+                                            {['T', 'F'].map(val => (
+                                              <button
+                                                key={val}
+                                                onClick={() => {
+                                                  const newArr = [...currentArr];
+                                                  newArr[idx] = val;
+                                                  handlePdfAnswerSelect(qNum, newArr.join(','));
+                                                }}
+                                                className={`w-12 py-1 rounded-md font-bold text-[10px] transition-all ${
+                                                  currentArr[idx] === val 
+                                                  ? 'bg-amber-500 text-white shadow-sm' 
+                                                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                                                }`}
+                                              >
+                                                {val === 'T' ? 'Đúng' : 'Sai'}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  /* Dạng Trắc nghiệm ABCD thường */
+                                  <div className="flex justify-between bg-white p-2 rounded-2xl border border-gray-100">
+                                    {['A', 'B', 'C', 'D'].map(opt => (
+                                      <button 
+                                        key={opt} 
+                                        onClick={() => handlePdfAnswerSelect(qNum, opt)} 
+                                        className={`w-10 h-10 rounded-full font-bold text-sm shadow-sm transition-all ${
+                                          pdfAnswers[qNum] === opt 
+                                          ? 'bg-blue-600 text-white scale-110 shadow-blue-200' 
+                                          : 'bg-white text-gray-400 hover:bg-blue-50'
+                                        }`}
+                                      >
+                                        {opt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               {/* ======================================= */}
               
               {isExtracting ? (

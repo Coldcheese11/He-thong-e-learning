@@ -315,7 +315,12 @@ export default function Quiz() {
           <>
             {/* LUỒNG 1: ĐỀ PDF (BỐ CỤC AZOTA) */}
             <div className="w-full md:w-[65%] h-full bg-gray-200 overflow-hidden relative">
-              <iframe src={exam.pdf_url} className="h-full w-full border-none" title="Exam Content" />
+              <iframe 
+                src={`${exam.pdf_url}#toolbar=0&navpanes=0&scrollbar=1`} 
+                className="w-full h-full border-none"
+                style={{ minHeight: '100%' }} // Đảm bảo PDF luôn lấy hết chiều cao container
+                title="PDF Exam" 
+              />
             </div>
 
             {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) */}
