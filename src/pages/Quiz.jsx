@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import SafeLatex from './SafeLatex'; // Đảm bảo bạn đã import SafeLatex nếu dùng ở component con
+import SafeLatex from './SafeLatex';
+import { ChevronUp, ChevronDown, Clock, AlertTriangle, CheckCircle, Send, Layout, BookOpen } from 'lucide-react';
 
+// =========================================================================
 // HÀM XÁO TRỘN MẢNG (Thuật toán Fisher-Yates)
+// =========================================================================
 const shuffleArray = (array) => {
   const newArr = [...array];
   for (let i = newArr.length - 1; i > 0; i--) {
@@ -14,7 +17,7 @@ const shuffleArray = (array) => {
 };
 
 // =========================================================================
-// ✅ ĐÚNG: COMPONENT PHỤ ĐƯỢC KHAI BÁO BÊN NGOÀI COMPONENT CHÍNH
+// COMPONENT PHỤ XỬ LÝ NHẬP LIỆU (ĐA DẠNG LOẠI CÂU HỎI)
 // =========================================================================
 const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
   const type = q?.question_bank?.question_type;
@@ -27,8 +30,8 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
         type="text"
         value={answers[index + 1] || ''}
         onChange={(e) => handleSelect(index + 1, e.target.value)}
-        placeholder="Nhập câu trả lời của em..."
-        className={`w-full px-5 py-3 border-2 border-purple-200 rounded-xl outline-none focus:border-purple-500 font-bold text-purple-700 text-lg bg-purple-50 shadow-inner transition-all`}
+        placeholder="Nhập câu trả lời..."
+        className="w-full px-5 py-3 border-2 border-purple-200 rounded-xl outline-none focus:border-purple-500 font-bold text-purple-700 text-lg bg-purple-50 shadow-inner transition-all"
       />
     );
   }
@@ -39,15 +42,10 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
       <div className={`space-y-3 w-full ${isFullMode ? 'max-w-full' : ''}`}>
         {['A', 'B', 'C', 'D'].map((label, i) => (
           <div key={label} className={`flex ${isFullMode ? 'flex-col lg:flex-row lg:items-center' : 'items-center'} justify-between bg-gray-50 p-3 px-4 rounded-xl border border-gray-200 gap-4`}>
-            
-            {/* KHU VỰC HIỂN THỊ CHỮ */}
             <div className="flex-1 text-base text-gray-800">
               <span className="font-bold text-blue-700 mr-2 text-lg">{label}.</span>
-              {/* 🔥 QUAN TRỌNG: Lôi nội dung từ Database ra cho học sinh đọc 🔥 */}
               {isFullMode && <SafeLatex>{data?.[`opt_${label.toLowerCase()}`]}</SafeLatex>}
             </div>
-
-            {/* KHU VỰC 2 NÚT BẤM (ĐÚNG / SAI) */}
             <div className="flex gap-2 shrink-0">
               {['T', 'F'].map(val => (
                 <button
@@ -57,7 +55,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
                     currentArr[i] = val;
                     handleSelect(index + 1, currentArr.join(','));
                   }}
-                  className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
+                  className={`px-5 py-2 rounded-lg font-bold text-sm transition-all ${
                     answers[index + 1]?.split(',')[i] === val 
                     ? 'bg-indigo-600 text-white shadow-md transform scale-105' 
                     : 'bg-white border-2 border-gray-200 text-gray-500 hover:border-indigo-300'
@@ -67,7 +65,6 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
                 </button>
               ))}
             </div>
-
           </div>
         ))}
       </div>
@@ -76,13 +73,13 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
 
   // 3. DẠNG TRẮC NGHIỆM ABCD THƯỜNG
   return (
-    <div className={`grid gap-3 ${isFullMode ? 'grid-cols-1 md:grid-cols-2' : 'flex space-x-4'}`}>
+    <div className={`grid gap-3 ${isFullMode ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-4 sm:flex sm:space-x-3'}`}>
       {['A', 'B', 'C', 'D'].map((opt) => (
         <button
           key={opt}
           onClick={() => handleSelect(index + 1, opt)}
           className={`flex items-center font-bold transition-all border-2 ${
-            isFullMode ? 'p-4 rounded-2xl text-left' : 'h-12 w-12 rounded-full justify-center'
+            isFullMode ? 'p-4 rounded-2xl text-left' : 'h-12 w-full sm:w-12 rounded-xl justify-center'
           } ${
             answers[index + 1] === opt 
             ? 'border-blue-600 bg-blue-600 text-white shadow-lg transform scale-105' 
@@ -100,7 +97,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
 };
 
 // =========================================================================
-// HÀM QUIZ CHÍNH CỦA TRANG
+// COMPONENT CHÍNH: QUIZ
 // =========================================================================
 export default function Quiz() {
   const { id } = useParams();
@@ -111,11 +108,11 @@ export default function Quiz() {
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [loading, setLoading] = useState(true);
-
-  // Giám thị ảo
   const [isStarted, setIsStarted] = useState(false); 
   const [violations, setViolations] = useState(0);
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
+  // 1. TẢI DỮ LIỆU & XÁO ĐỀ
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -134,63 +131,50 @@ export default function Quiz() {
 
         let finalQuestions = qData || [];
 
-        // 1. SỬA LỖI ĐỀ PDF TRẮNG PHIẾU TRẢ LỜI
+        // PDF Mode Fallback
         if (finalQuestions.length === 0 && exData.total_questions > 0) {
-          // Lấy danh sách loại câu hỏi giáo viên đã lưu (Trắc nghiệm/Điền khuyết)
           const pdfTypes = exData.answer_key?.types || {}; 
-          
           finalQuestions = Array.from({ length: exData.total_questions }).map((_, i) => ({
             question_id: `pdf-q-${i}`,
             question_bank: { 
               id: `pdf-q-${i}`, 
-              content: `Câu PDF`, 
+              content: `Câu hỏi PDF`, 
               correct_opt: 'A',
-              question_type: pdfTypes[i + 1] || 'multiple_choice' // <--- Đọc đúng loại câu hỏi
+              question_type: pdfTypes[i + 1] || 'multiple_choice'
             }
           }));
         }
 
-        // 2. XÁO TRỘN THỨ TỰ CÂU HỎI
+        // Xử lý Xáo trộn câu hỏi
         if (exData.is_shuffle_questions && finalQuestions.length > 0) {
           finalQuestions = shuffleArray(finalQuestions);
         }
 
-        // 3. ĐỈNH CAO: XÁO TRỘN ĐÁP ÁN A, B, C, D
+        // Xử lý Xáo trộn đáp án (Chỉ cho đề bóc tách Text)
         if (exData.is_shuffle_options && finalQuestions.length > 0 && !exData.pdf_url) {
           finalQuestions = finalQuestions.map(q => {
             if (!q.question_bank || !q.question_bank.opt_a) return q;
-
-            // Gom 4 đáp án hiện tại lại
             const options = [
               { key: 'A', text: q.question_bank.opt_a },
               { key: 'B', text: q.question_bank.opt_b },
               { key: 'C', text: q.question_bank.opt_c },
               { key: 'D', text: q.question_bank.opt_d }
             ];
-
-            // Lưu lại nội dung của đáp án đúng ban đầu
             const originalCorrectKey = q.question_bank.correct_opt;
             const correctText = options.find(o => o.key === originalCorrectKey)?.text;
-
-            // Tiến hành xáo trộn
             const shuffledOptions = shuffleArray(options);
-
-            // Gắn lại key A,B,C,D mới và tìm xem đáp án đúng vừa bị ném đi đâu
             let newCorrectKey = originalCorrectKey;
             shuffledOptions.forEach((o, idx) => {
-              const newKey = String.fromCharCode(65 + idx); // 65 là mã ASCII của 'A'
+              const newKey = String.fromCharCode(65 + idx);
               if (o.text === correctText) newCorrectKey = newKey;
             });
-
             return {
               ...q,
               question_bank: {
                 ...q.question_bank,
-                opt_a: shuffledOptions[0].text,
-                opt_b: shuffledOptions[1].text,
-                opt_c: shuffledOptions[2].text,
-                opt_d: shuffledOptions[3].text,
-                correct_opt: newCorrectKey // Cập nhật lại đáp án đúng để hệ thống chấm không bị lệch
+                opt_a: shuffledOptions[0].text, opt_b: shuffledOptions[1].text,
+                opt_c: shuffledOptions[2].text, opt_d: shuffledOptions[3].text,
+                correct_opt: newCorrectKey
               }
             };
           });
@@ -198,15 +182,14 @@ export default function Quiz() {
 
         setQuestions(finalQuestions);
         setLoading(false);
-
       } catch (error) {
-        console.error("Lỗi lấy dữ liệu:", error);
+        console.error("Lỗi:", error);
       }
     };
     loadData();
   }, [id]);
 
-  // ---------- LOGIC GIÁM THỊ ẢO ----------
+  // 2. GIÁM THỊ ẢO & CHEATING
   useEffect(() => {
     if (!isStarted) return; 
     const handleCheating = () => {
@@ -225,8 +208,9 @@ export default function Quiz() {
     };
     document.addEventListener("visibilitychange", handleCheating);
     return () => document.removeEventListener("visibilitychange", handleCheating);
-  }, [isStarted, answers, questions, id]); 
+  }, [isStarted]); 
 
+  // 3. ĐẾM NGƯỢC THỜI GIAN
   useEffect(() => {
     if (!isStarted || timeLeft <= 0) return;
     const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
@@ -243,21 +227,18 @@ export default function Quiz() {
     setAnswers({ ...answers, [qIndex]: option });
   };
 
+  // 4. NỘP BÀI
   const handleSubmit = async (isAutoSubmit = false) => {
     if (!isAutoSubmit && !window.confirm("Bạn có chắc chắn muốn nộp bài?")) return;
     setLoading(true);
     const studentId = localStorage.getItem('user_id'); 
 
     let correctCount = 0;
-    const totalQ = questions.length;
-
     questions.forEach((q, index) => {
-      const studentOpt = answers[index + 1];
-      const correctOpt = q.question_bank.correct_opt;
-      if (studentOpt === correctOpt) correctCount++;
+      if (answers[index + 1] === q.question_bank.correct_opt) correctCount++;
     });
 
-    const finalScore = parseFloat(((correctCount / totalQ) * 10).toFixed(2));
+    const finalScore = parseFloat(((correctCount / questions.length) * 10).toFixed(2));
 
     try {
       await supabase.from('student_attempts').insert([{
@@ -270,44 +251,40 @@ export default function Quiz() {
       }]);
 
       if (document.fullscreenElement) document.exitFullscreen();
-      // Bổ sung thêm việc gửi toàn bộ đề thi (questions) và bài làm (answers) sang trang Kết quả
       navigate('/result', { 
         state: { 
-          score: finalScore, 
-          correct: correctCount, 
-          total: totalQ,
-          questions: questions,
-          studentAnswers: answers,
-          examTitle: exam?.title
+          score: finalScore, correct: correctCount, total: questions.length,
+          questions, studentAnswers: answers, examTitle: exam?.title
         } 
       });
     } catch (error) {
-      alert("❌ Lỗi nộp bài: " + error.message);
+      alert("Lỗi nộp bài: " + error.message);
       setLoading(false);
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-blue-600 font-bold">Đang tải đề thi từ máy chủ...</div>;
+  if (loading) return <div className="p-10 text-center text-blue-600 font-bold animate-pulse">Đang tải dữ liệu phòng thi...</div>;
 
+  // MÀN HÌNH NỘI QUY
   if (!isStarted) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100 p-6">
-        <div className="w-full max-w-lg rounded-xl bg-white p-8 shadow-2xl">
-          <h1 className="mb-6 text-center text-3xl font-bold text-red-600">⚠️ NỘI QUY PHÒNG THI</h1>
-          <div className="mb-8 space-y-4 text-lg text-gray-700">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-2xl border border-red-100 text-center">
+          <AlertTriangle className="mx-auto text-red-500 mb-4" size={64} />
+          <h1 className="mb-6 text-2xl font-black text-gray-800">⚠️ NỘI QUY PHÒNG THI</h1>
+          <div className="mb-8 space-y-4 text-left bg-gray-50 p-6 rounded-2xl text-gray-700 font-medium">
             <p>1. Hệ thống sẽ tự động bật <b>Toàn màn hình</b>.</p>
-            <p>2. Trong quá trình làm bài, <b>KHÔNG</b> được chuyển sang Tab khác.</p>
-            <p>3. Rời khỏi màn hình quá <b>3 lần</b> sẽ <b>TỰ ĐỘNG THU BÀI</b>.</p>
+            <p>2. Tuyệt đối <b>KHÔNG</b> được chuyển sang Tab khác.</p>
+            <p>3. Rời khỏi màn hình quá <b>3 lần</b> sẽ <b>BỊ ĐUỔI</b>.</p>
           </div>
           <button 
             onClick={() => {
               setIsStarted(true);
-              const elem = document.documentElement;
-              if (elem.requestFullscreen) elem.requestFullscreen();
+              if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             }}
-            className="w-full rounded-lg bg-blue-600 py-4 text-xl font-bold text-white shadow-lg hover:bg-blue-700"
+            className="w-full rounded-2xl bg-blue-600 py-5 text-xl font-bold text-white shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
           >
-            TÔI ĐÃ HIỂU - BẮT ĐẦU LÀM BÀI
+            TÔI ĐÃ RÕ - BẮT ĐẦU
           </button>
         </div>
       </div>
@@ -315,91 +292,122 @@ export default function Quiz() {
   }
 
   return (
-   <div className="flex h-screen w-full flex-col overflow-hidden bg-gray-100">
-      <header className="flex items-center justify-between bg-white px-6 py-3 shadow-md z-10">
-        <h2 className="text-xl font-bold text-blue-800">{exam?.title}</h2>
-        <div className="flex items-center space-x-6">
-          {violations > 0 && <div className="rounded bg-red-100 px-3 py-1 font-bold text-red-700">Vi phạm: {violations}/3</div>}
-          <div className="text-xl font-mono font-bold text-red-600 bg-red-50 px-4 py-1 rounded-lg border border-red-200">
-            ⏱ {formatTime(timeLeft)}
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-gray-50">
+      {/* HEADER FIX CỨNG */}
+      <header className="flex items-center justify-between bg-white px-4 md:px-8 py-3 shadow-sm border-b z-30">
+        <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${violations > 0 ? 'bg-red-500 animate-ping' : 'bg-green-500'}`}></div>
+            <h2 className="text-base md:text-xl font-black text-gray-800 truncate max-w-[150px] md:max-w-none">{exam?.title}</h2>
+        </div>
+        <div className="flex items-center space-x-3 md:space-x-6">
+          {violations > 0 && <div className="hidden sm:block rounded-full bg-red-100 px-3 py-1 font-bold text-red-700 text-xs">Vi phạm: {violations}/3</div>}
+          <div className="text-lg md:text-xl font-mono font-bold text-red-600 bg-red-50 px-3 md:px-5 py-1.5 rounded-xl border border-red-200 flex items-center gap-2">
+            <Clock size={18} /> {formatTime(timeLeft)}
           </div>
-          <button onClick={() => handleSubmit(false)} className="rounded-lg bg-green-600 px-6 py-2 font-bold text-white hover:bg-green-700 transition-colors">
+          <button onClick={() => handleSubmit(false)} className="rounded-xl bg-green-600 px-4 md:px-8 py-2 md:py-3 font-bold text-white hover:bg-green-700 shadow-lg shadow-green-100 transition-all text-sm md:text-base">
             NỘP BÀI
           </button>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden bg-gray-100">
-        {/* KIỂM TRA: Nếu có PDF_URL và KHÔNG PHẢI file .tex thì mới hiện giao diện chia đôi */}
+      <div className="flex flex-1 overflow-hidden relative">
         {exam?.pdf_url && !exam.pdf_url.toLowerCase().endsWith('.tex') ? (
           <>
-            {/* --- BÊN TRÁI: XEM FILE PDF --- */}
-            <div className="w-1/2 border-r bg-gray-50 overflow-y-auto">
-              <iframe 
-                src={exam.pdf_url} 
-                className="h-full w-full border-none" 
-                title="PDF Exam" 
-              />
+            {/* LUỒNG 1: ĐỀ PDF (BỐ CỤC AZOTA) */}
+            <div className="w-full md:w-[65%] h-full bg-gray-200 overflow-hidden relative">
+              <iframe src={exam.pdf_url} className="h-full w-full border-none" title="Exam Content" />
             </div>
 
-            {/* --- BÊN PHẢI: PHIẾU TRẢ LỜI ĐỤC LỖ --- */}
-            <div className="w-1/2 overflow-y-auto bg-white p-6 shadow-inner">
-              <h3 className="mb-6 border-b pb-2 text-lg font-bold text-gray-700 uppercase tracking-wider">Phiếu trả lời</h3>
-              <div className="grid grid-cols-1 gap-6">
-                {questions.map((q, index) => (
-                  <div key={index} className="flex items-center space-x-4 rounded-xl border p-4 hover:bg-gray-50 transition-colors shadow-sm">
-                    <span className="w-16 font-bold text-gray-500 text-lg">Câu {index + 1}:</span>
-                    <div className="flex-1">
-                      {/* Gọi Component xử lý nút bấm/input */}
-                      <QuestionInput 
-                        q={q} 
-                        index={index} 
-                        answers={answers} 
-                        handleSelect={handleSelect} 
-                        isFullMode={false} 
-                      />
+            {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) */}
+            <div className={`
+              fixed bottom-0 left-0 w-full bg-white z-40 transition-all duration-500 ease-in-out shadow-[0_-15px_50px_rgba(0,0,0,0.2)]
+              md:static md:w-[35%] md:h-full md:shadow-none md:translate-y-0 md:border-l
+              ${isMobileSheetOpen ? 'h-[75vh] translate-y-0' : 'h-14 translate-y-0 md:h-full'}
+            `}>
+              {/* Thanh trượt cho Mobile */}
+              <div 
+                className="md:hidden flex flex-col items-center py-3 cursor-pointer bg-white rounded-t-3xl border-t border-gray-100"
+                onClick={() => setIsMobileSheetOpen(!isMobileSheetOpen)}
+              >
+                <div className="w-16 h-1.5 bg-gray-200 rounded-full mb-2"></div>
+                <div className="text-[10px] font-black text-blue-600 uppercase flex items-center gap-2">
+                  {isMobileSheetOpen ? <><ChevronDown size={14}/> Thu gọn phiếu</> : <><ChevronUp size={14}/> Chạm để chọn đáp án</>}
+                </div>
+              </div>
+
+              <div className="p-5 md:p-8 overflow-y-auto h-[calc(100%-56px)] md:h-full custom-scrollbar">
+                <div className="flex justify-between items-center mb-6 border-b pb-4">
+                    <h3 className="font-black text-gray-800 uppercase text-sm tracking-[0.2em] flex items-center gap-2">
+                        <Layout size={18} className="text-blue-600" /> Phiếu trả lời
+                    </h3>
+                    <div className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                        {Object.keys(answers).length} / {questions.length} câu
                     </div>
-                  </div>
-                ))}
+                </div>
+                
+                <div className="grid grid-cols-1 gap-5">
+                  {questions.map((q, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl border border-gray-100 bg-gray-50/30 hover:bg-white hover:shadow-md transition-all group">
+                      <span className="font-black text-gray-400 text-sm shrink-0 group-hover:text-blue-600 transition-colors">CÂU {index + 1}</span>
+                      <div className="flex-1">
+                        <QuestionInput q={q} index={index} answers={answers} handleSelect={handleSelect} isFullMode={false} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="h-10"></div>
               </div>
             </div>
+
+            {/* Lớp phủ khi mở sheet mobile */}
+            {isMobileSheetOpen && (
+              <div className="fixed inset-0 bg-black/40 z-30 md:hidden backdrop-blur-sm" onClick={() => setIsMobileSheetOpen(false)}></div>
+            )}
           </>
         ) : (
-          /* --- GIAO DIỆN TRÀN MÀN HÌNH (Dành cho Tex/Word) --- */
-          <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-8">
+          /* LUỒNG 2: ĐỀ TEXT/WORD (DÀN TRANG HIỆN ĐẠI) */
+          <div className="flex-1 overflow-y-auto p-4 md:p-12 custom-scrollbar bg-white">
+            <div className="max-w-4xl mx-auto space-y-12">
               {questions.map((q, index) => (
-                <div key={index} className="bg-white rounded-2xl shadow-sm border p-6 hover:shadow-md transition-all">
-                  {/* Nội dung câu hỏi bóc tách */}
-                  <div className="text-lg mb-4 leading-relaxed">
-                    <span className="font-bold text-blue-600 mr-2 text-xl">Câu {index + 1}:</span>
-                    <SafeLatex>{q?.question_bank?.content}</SafeLatex>
+                <div key={index} className="group relative">
+                  {/* Số thứ tự câu hỏi bay lơ lửng */}
+                  <div className="absolute -left-12 top-0 hidden lg:flex items-center justify-center w-10 h-10 bg-gray-100 text-gray-400 rounded-xl font-black italic group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    {index + 1}
                   </div>
 
-                  {/* HIỂN THỊ ẢNH ĐỀ BÀI (Nếu có) */}
-                  {q?.question_bank?.image_url && (
-                    <div className="mb-6 flex justify-center bg-gray-50 py-6 rounded-2xl border border-dashed border-gray-300">
-                      <img 
-                        src={q.question_bank.image_url} 
-                        alt={`Hình ảnh câu ${index + 1}`} 
-                        className="max-h-[450px] object-contain rounded-lg shadow-lg"
-                      />
+                  <div className="bg-white rounded-3xl p-6 md:p-8 border border-transparent hover:border-blue-100 hover:shadow-xl hover:shadow-blue-50/50 transition-all">
+                    <div className="text-xl mb-8 leading-relaxed text-gray-800 font-medium">
+                      <span className="lg:hidden font-black text-blue-600 mr-2 italic">Câu {index + 1}:</span>
+                      <SafeLatex>{q?.question_bank?.content}</SafeLatex>
                     </div>
-                  )}
 
-                  {/* Khu vực chọn đáp án/điền khuyết */}
-                  <div className="mt-6 pt-6 border-t border-gray-100">
-                    <QuestionInput 
-                      q={q} 
-                      index={index} 
-                      answers={answers} 
-                      handleSelect={handleSelect} 
-                      isFullMode={true} 
-                    />
+                    {q?.question_bank?.image_url && (
+                      <div className="mb-8 flex justify-center bg-gray-50 p-6 rounded-3xl border-2 border-dashed border-gray-200">
+                        <img src={q.question_bank.image_url} alt="Question Graphic" className="max-h-[500px] object-contain rounded-xl shadow-2xl" />
+                      </div>
+                    )}
+
+                    <div className="pt-6 border-t border-gray-50">
+                      <QuestionInput q={q} index={index} answers={answers} handleSelect={handleSelect} isFullMode={true} />
+                    </div>
                   </div>
                 </div>
               ))}
-              <div className="h-24"></div> {/* Khoảng trống để không bị che bởi footer */}
+              
+              <div className="py-16 text-center">
+                  <div className="inline-flex flex-col items-center">
+                    <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                        <CheckCircle size={32} />
+                    </div>
+                    <p className="text-gray-400 font-black uppercase tracking-widest text-sm mb-6">Bạn đã hoàn thành tất cả câu hỏi</p>
+                    <button 
+                        onClick={() => handleSubmit(false)} 
+                        className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-12 py-4 rounded-2xl font-black text-lg shadow-xl shadow-green-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                    >
+                        <Send size={20} /> NỘP BÀI VÀ XEM KẾT QUẢ
+                    </button>
+                  </div>
+              </div>
             </div>
           </div>
         )}
@@ -407,4 +415,3 @@ export default function Quiz() {
     </div>
   );
 }
-

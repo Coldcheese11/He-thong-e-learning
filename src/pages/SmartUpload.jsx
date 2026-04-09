@@ -54,6 +54,9 @@ const SmartUpload = () => {
   const [numPdfQuestions, setNumPdfQuestions] = useState(40);
   const [pdfAnswers, setPdfAnswers] = useState({});
 
+  const [isShuffleQuestions, setIsShuffleQuestions] = useState(false);
+  const [isShuffleOptions, setIsShuffleOptions] = useState(false);
+
   // STATE MỚI: Lưu loại câu hỏi của bảng PDF
   const [pdfQuestionTypes, setPdfQuestionTypes] = useState({}); 
 
@@ -417,12 +420,22 @@ const SmartUpload = () => {
       const isPdfOrImage = fileType === 'pdf' || fileType === 'image';
       
       const { data: examData, error: examError } = await supabase.from('exams').insert([{
-        title: examTitle, duration: parseInt(duration), status: 'published',
+        title: examTitle, 
+        duration: parseInt(duration), 
+        status: 'published',
         total_questions: isPdfOrImage ? numPdfQuestions : parsedQuestions.length,
-        grade: 'Khối 10', pdf_url: finalFileUrl, is_shuffle_questions: false,
-        is_shuffle_options: false, subject_id: selectedSubject, is_public: isPublic,
+        grade: 'Khối 10', 
+        pdf_url: finalFileUrl, 
+        
+        // SỬA TẠI ĐÂY: Lấy giá trị từ các checkbox bạn vừa tích
+        is_shuffle_questions: isShuffleQuestions, 
+        is_shuffle_options: isShuffleOptions,
+        is_public: isPublic,
+        
+        subject_id: selectedSubject, 
         answer_key: fileType === 'pdf' ? { answers: pdfAnswers, types: pdfQuestionTypes } : null
-      }]).select(); 
+      }]).select();
+      
       if (examError) throw examError;
       
       const newExamId = examData[0].id;
@@ -525,15 +538,39 @@ const SmartUpload = () => {
         <div className={`flex flex-col gap-4 overflow-hidden transition-all duration-300 ${showLeftPanel ? 'w-[550px]' : 'flex-1'}`}>
           
           <div className="bg-white border rounded-2xl p-5 shadow-sm shrink-0 flex justify-between items-start gap-4">
-            <div className="flex-1 space-y-3">
-              <h3 className="font-bold flex items-center gap-2"><Settings size={18}/> Cài đặt bài thi</h3>
-              <input type="text" value={examTitle} onChange={e=>setExamTitle(e.target.value)} placeholder="Tên bài thi *" className="w-full p-2 border rounded-lg font-bold outline-none" />
-              <div className="grid grid-cols-2 gap-3">
-                <select value={selectedSubject} onChange={e=>setSelectedSubject(e.target.value)} className="p-2 border rounded-lg outline-none">
-                  <option value="">-- Môn học --</option>
-                  {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <input type="number" value={duration} onChange={e=>setDuration(e.target.value)} placeholder="Phút" className="p-2 border rounded-lg outline-none" />
+            <div className="flex-1 space-y-4">
+              <h3 className="font-bold flex items-center gap-2 text-gray-800"><Settings size={18}/> Thông tin chung</h3>
+              
+              <div className="space-y-3">
+                <input type="text" value={examTitle} onChange={e=>setExamTitle(e.target.value)} placeholder="Tên bài thi *" className="w-full p-2 border border-gray-200 rounded-lg font-bold outline-none focus:border-blue-500 transition-colors" />
+                <div className="grid grid-cols-2 gap-3">
+                  <select value={selectedSubject} onChange={e=>setSelectedSubject(e.target.value)} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 font-medium text-gray-700 bg-white">
+                    <option value="">-- Môn học --</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <input type="number" value={duration} onChange={e=>setDuration(e.target.value)} placeholder="Thời gian (Phút)" className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
+                </div>
+              </div>
+
+              {/* KHU VỰC CÀI ĐẶT ĐẢO ĐỀ VÀ CÔNG KHAI */}
+              <div className="pt-2 border-t border-gray-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                    <input type="checkbox" checked={isShuffleQuestions} onChange={(e) => setIsShuffleQuestions(e.target.checked)} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                    <span className="text-sm font-medium text-gray-700">Đảo vị trí câu hỏi</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                    <input type="checkbox" checked={isShuffleOptions} onChange={(e) => setIsShuffleOptions(e.target.checked)} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                    <span className="text-sm font-medium text-gray-700">Đảo đáp án A, B, C, D</span>
+                  </label>
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-blue-50 border border-blue-100 transition-colors">
+                  <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 mt-1" />
+                  <div>
+                    <span className="text-sm font-bold text-blue-800 block">Chia sẻ lên Kho Đề Cộng Đồng</span>
+                    <span className="text-xs text-blue-600 leading-tight block mt-0.5">Giáo viên khác có thể sao chép và sử dụng đề thi này.</span>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -541,7 +578,7 @@ const SmartUpload = () => {
             {file && (
               <button 
                 onClick={() => setShowLeftPanel(!showLeftPanel)} 
-                className="p-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl font-bold flex flex-col items-center justify-center transition-all border border-indigo-100 shadow-sm"
+                className="p-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl font-bold flex flex-col items-center justify-center transition-all border border-indigo-100 shadow-sm shrink-0"
               >
                 {showLeftPanel ? <ChevronsRight size={24} /> : <ChevronsLeft size={24} />}
                 <span className="text-[11px] mt-1 whitespace-nowrap">{showLeftPanel ? 'Phóng to bảng' : 'Xem đề bài'}</span>
