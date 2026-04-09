@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-
+import 'katex/dist/katex.min.css';
 // Import trang Super Admin & Profile
 import SuperAdmin from './pages/SuperAdmin';
 import Profile from './pages/Profile';

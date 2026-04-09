@@ -7,28 +7,71 @@ class SafeLatex extends Component {
     super(props);
     this.state = { hasError: false };
   }
-  
+
   static getDerivedStateFromError(error) {
     return { hasError: true };
   }
-  
+
+  // HÀM TIỀN XỬ LÝ REGEX TỪ SMARTUPLOAD FILE TEX
+  formatLatexContent(rawText) {
+    if (!rawText || typeof rawText !== 'string') return rawText;
+
+    let cleanText = rawText
+      // 1. Xử lý các khối TikZ và Bảng biểu phức tạp thành cảnh báo
+      .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
+      .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
+      
+      // 2. Dọn dẹp các lệnh môi trường không cần thiết để hiển thị text thuần
+      .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1')
+      
+      // 3. CHUYỂN ĐỔI NGOẶC TOÁN HỌC (Rất quan trọng cho iPhone)
+      .replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$') 
+      .replace(/\\\(/g, '$$').replace(/\\\)/g, '$$')
+
+      // 4. CHUYỂN ĐỔI LỆNH \heva VÀ \hoac (Chuẩn Latex cho Katex)
+      .replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}')
+      .replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.')
+      
+      // 5. Loại bỏ các lệnh định dạng text thừa trong đề Toán
+      .replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1')
+
+      // 6. Xử lý thông minh cho lệnh chèn ảnh \immini
+      .replace(/\\immini(?:\[.*?\])?\s*\{([\s\S]*?)\}\s*\{\s*(\[⚠️.*?\])\s*\}/g, '$1\n$2')
+      .replace(/\\immini(?:\[.*?\])?\s*/g, '')
+
+      // 7. Dọn rác ngoặc nhọn do bóc tách để lại
+      .replace(/^[\s\{]+/, '').replace(/[\s\}]+$/, '')
+      .replace(/\{(\[⚠️.*?\])\}/g, '$1')
+      
+      // 8. Đảm bảo các lệnh toán học như \dfrac, \vec không bị lỗi hiển thị
+      .replace(/\\dfrac/g, '\\dfrac')
+      .replace(/\\vec/g, '\\vec')
+      
+      // 9. Giữ nguyên xuống hàng của văn bản
+      .replace(/\n/g, '<br/>');
+
+    return cleanText.trim();
+  }
+
   render() {
-    let safeText = this.props.children || "";
-    if (typeof safeText === 'string') {
-      // Chuyển đổi định dạng ngoặc toán học của LaTeX
-      safeText = safeText.replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$'); 
-      safeText = safeText.replace(/\\\(/g, '$$').replace(/\\\)/g, '$$');     
-    }
+    const rawData = this.props.children || "";
+    const safeText = this.formatLatexContent(rawData);
     
-    // Nếu công thức bị lỗi cú pháp, hiển thị chữ thô màu đỏ thay vì làm sập cả web
+    // Nếu công thức bị lỗi cú pháp quá nặng, hiển thị text thô để học sinh vẫn đọc được đề
     if (this.state.hasError) {
-      return <span className="text-red-500 bg-red-50 px-2 py-1 rounded text-sm">{safeText}</span>;
+      return (
+        <span className="text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100 text-sm italic">
+          {safeText.replace(/<br\/>/g, '\n')}
+        </span>
+      );
     }
     
     return (
-      <Latex strict="ignore" macros={{"\\heva": "\\begin{cases} #1 \\end{cases}", "\\hoac": "\\left[\\begin{matrix} #1 \\end{matrix}\\right."}}>
-        {safeText}
-      </Latex>
+      <span className="latex-renderer inline-block max-w-full overflow-x-auto scrollbar-hide vertical-middle">
+        <Latex strict="ignore">
+          {safeText}
+        </Latex>
+      </span>
     );
   }
 }
