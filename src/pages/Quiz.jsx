@@ -313,37 +313,29 @@ export default function Quiz() {
       <div className="flex flex-1 overflow-hidden relative">
         {exam?.pdf_url && !exam.pdf_url.toLowerCase().endsWith('.tex') ? (
           <>
-            {/* --- BÊN TRÁI: XEM FILE PDF (ĐÃ FIX LỖI CUỘN TRÊN IPHONE) --- */}
-            <div 
-              className="w-full md:w-[65%] h-full bg-gray-200 relative flex flex-col overflow-y-auto" 
-              style={{ WebkitOverflowScrolling: 'touch' }} // Lệnh quan trọng cho iOS
-            >
-              {/* Nút hỗ trợ mở PDF rời (Cứu cánh khi Safari quá lag) */}
+            {/* --- BÊN TRÁI: XEM FILE PDF (SỬ DỤNG GOOGLE VIEWER ĐỂ TRỊ SAFARI) --- */}
+            <div className="w-full md:w-[65%] h-full bg-gray-200 relative flex flex-col">
+              
+              {/* Nút cứu cánh (Vẫn nên giữ để chuyên nghiệp) */}
               <div className="absolute top-3 right-3 z-50 md:hidden">
                 <a 
                   href={exam.pdf_url} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-2xl border border-white/20"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl"
                 >
-                  <Send size={14} /> Mở PDF rời
+                  <Send size={14} /> Mở file gốc
                 </a>
               </div>
 
-              <div className="flex-1 w-full h-full">
-                <object
-                  data={`${exam.pdf_url}#toolbar=0&navpanes=0&scrollbar=1`}
-                  type="application/pdf"
-                  className="w-full h-full min-h-[100.1%]"
-                >
-                  <iframe 
-                    src={`${exam.pdf_url}#toolbar=0&navpanes=0&scrollbar=1`} 
-                    className="w-full h-full border-none"
-                    title="PDF Content"
-                  >
-                    <p>Trình duyệt không hỗ trợ xem PDF. <a href={exam.pdf_url}>Tải về tại đây.</a></p>
-                  </iframe>
-                </object>
+              <div className="flex-1 w-full h-full overflow-hidden">
+                <iframe 
+                  /* Dùng Google Docs Viewer để bọc link PDF của bạn */
+                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(exam.pdf_url)}&embedded=true`}
+                  className="w-full h-full border-none"
+                  style={{ width: '100%', height: '100%' }}
+                  title="PDF Content"
+                />
               </div>
             </div>
 
