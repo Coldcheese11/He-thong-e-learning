@@ -66,6 +66,37 @@ export default function AdminClasses() {
     if (data) setStudents(data);
   };
 
+  // ================= TÍNH NĂNG MỚI: XÓA LỚP =================
+  const handleDeleteClass = async (classId) => {
+    if (!window.confirm("⚠️ CẢNH BÁO: Bạn có chắc chắn muốn xóa lớp học này không? Mọi dữ liệu của lớp sẽ bị xóa vĩnh viễn!")) return;
+
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .delete()
+        .eq('id', classId);
+
+      if (error) throw error;
+
+      // Cập nhật lại UI sau khi xóa thành công
+      const updatedClasses = classes.filter(c => c.id !== classId);
+      setClasses(updatedClasses);
+
+      // Nếu lớp đang chọn bị xóa, reset lại giao diện hoặc chọn lớp khác
+      if (selectedClass?.id === classId) {
+        setSelectedClass(null);
+        setStudents([]);
+        if (updatedClasses.length > 0) {
+          handleSelectClass(updatedClasses[0]);
+        }
+      }
+      
+      alert("✅ Đã xóa lớp thành công!");
+    } catch (error) {
+      alert("❌ Lỗi khi xóa lớp: " + error.message);
+    }
+  };
+
   // Xóa học sinh khỏi lớp
   const handleKickStudent = async (memberId) => {
     if (!window.confirm("Bạn có chắc muốn xóa học sinh này khỏi lớp?")) return;
@@ -126,29 +157,42 @@ export default function AdminClasses() {
         <div className="md:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col min-h-[500px]">
           {selectedClass ? (
             <>
-              <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+              {/* ĐÃ CHỈNH SỬA: Gom các nút vào một thẻ div để hiển thị ngang hàng đẹp mắt */}
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 pb-4 border-b border-gray-100 gap-4">
                 <div>
                   <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                     <GraduationCap className="text-blue-600" /> Danh sách: {selectedClass.name}
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">Sĩ số: {students.length} học sinh</p>
                 </div>
-                <button 
-                  onClick={() => copyInviteCode(selectedClass.invite_code)}
-                  className="bg-green-50 text-green-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-green-100 transition-colors"
-                >
-                  <Copy size={16} /> Copy Mã Mời
-                </button>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* NÚT XÓA LỚP */}
+                  <button 
+                    onClick={() => handleDeleteClass(selectedClass.id)}
+                    className="bg-red-50 text-red-600 px-4 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-red-100 transition-colors"
+                    title="Xóa toàn bộ lớp học"
+                  >
+                    <Trash2 size={18} /> Xóa Lớp
+                  </button>
 
-                <Link 
-                  to={`/classroom/${selectedClass.id}`}
-                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:scale-105 active:scale-95 transition-all group"
-                >
-                  <div className="bg-white/20 p-1.5 rounded-lg group-hover:rotate-12 transition-transform">
-                    <Send size={18} />
-                  </div>
-                  <span>Vào Bảng Tin & Đăng Bài</span>
-                </Link>
+                  <button 
+                    onClick={() => copyInviteCode(selectedClass.invite_code)}
+                    className="bg-green-50 text-green-700 px-4 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-green-100 transition-colors"
+                  >
+                    <Copy size={18} /> Copy Mã
+                  </button>
+
+                  <Link 
+                    to={`/classroom/${selectedClass.id}`}
+                    className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:scale-105 active:scale-95 transition-all group"
+                  >
+                    <div className="bg-white/20 p-1 rounded-lg group-hover:rotate-12 transition-transform">
+                      <Send size={16} />
+                    </div>
+                    <span>Bảng Tin</span>
+                  </Link>
+                </div>
               </div>
 
               {students.length === 0 ? (
