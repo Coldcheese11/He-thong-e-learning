@@ -218,6 +218,9 @@ export default function Quiz() {
         setLoading(false);
       } catch (error) {
         console.error("Lỗi:", error);
+        // THÊM DÒNG NÀY ĐỂ HIỆN LỖI TRÊN MÀN HÌNH ĐIỆN THOẠI
+        alert("LỖI RỒI: " + error.message); 
+        setLoading(false);
       }
     };
     loadData();
