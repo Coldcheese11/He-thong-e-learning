@@ -7,7 +7,11 @@ import { Worker, Viewer } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
-
+import { Span } from 'katex/src/domTree.js';
+import vConsole from 'vconsole';
+if (typeof window !== 'undefined') {
+  new vConsole();
+}
 // =========================================================================
 // HÀM XÁO TRỘN MẢNG (Thuật toán Fisher-Yates)
 // =========================================================================
@@ -48,7 +52,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
           <div key={label} className={`flex ${isFullMode ? 'flex-col lg:flex-row lg:items-center' : 'items-center'} justify-between bg-gray-50 p-3 px-4 rounded-xl border border-gray-200 gap-4`}>
             <div className="flex-1 text-base text-gray-800">
               <span className="font-bold text-blue-700 mr-2 text-lg">{label}.</span>
-              {isFullMode && <SafeLatex>{data?.[`opt_${label.toLowerCase()}`]}</SafeLatex>}
+              {isFullMode && <Span>{data?.[`opt_${label.toLowerCase()}`]}</Span>}
             </div>
             <div className="flex gap-2 shrink-0">
               {['T', 'F'].map(val => (
@@ -93,7 +97,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
           <span className={`${isFullMode ? 'mr-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center' : ''}`}>
             {opt}
           </span>
-          {isFullMode && <SafeLatex>{data?.[`opt_${opt.toLowerCase()}`]}</SafeLatex>}
+          {isFullMode && <Span>{data?.[`opt_${opt.toLowerCase()}`]}</Span>}
         </button>
       ))}
     </div>
@@ -317,7 +321,7 @@ export default function Quiz() {
           <button 
             onClick={() => {
               setIsStarted(true);
-             
+              if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             }}
             className="w-full rounded-2xl bg-blue-600 py-5 text-xl font-bold text-white shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
           >
@@ -353,10 +357,11 @@ export default function Quiz() {
             {/* --- BÊN TRÁI: HIỂN THỊ PDF CHUẨN AZOTA --- */}
               <div className="w-full md:w-[65%] h-full bg-gray-100 overflow-hidden relative border-r">
                 <div className="h-full w-full overflow-y-auto custom-scrollbar">
-                  <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+                  
+                  {/*<Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
                     <Viewer 
                       fileUrl={exam.pdf_url}
-                      plugins={[defaultLayoutPlugin()]} 
+                      plugins={[defaultLayoutPlugin()]} /}
                     />
                   </Worker>
                 </div>
