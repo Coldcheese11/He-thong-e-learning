@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import 'katex/dist/katex.min.css';
-import Latex from 'react-latex-next';
+// CHÌA KHÓA: Import trực tiếp lõi KaTeX, bỏ qua cái vỏ react-latex-next bị lỗi trên Safari
+import katex from 'katex'; 
 
 class SafeLatex extends Component {
   constructor(props) {
@@ -33,54 +34,80 @@ class SafeLatex extends Component {
     cleanText = cleanText.replace(/\\dfrac/g, '\\dfrac');
     cleanText = cleanText.replace(/\\vec/g, '\\vec');
 
-    // =========================================================================
-    // 2. THUẬT TOÁN QUA MẶT SAFARI: Đổi $ đơn thành \( và \)
-    // =========================================================================
-    
-    // Cất tạm các khối $$ (nếu ông thầy có dùng) thành một chuỗi đặc biệt để không bị cắt nhầm
-    cleanText = cleanText.split('$$').join('__SAFARI_DOUBLE__');
-
-    // Cắt chuỗi theo dấu $ đơn và bọc \( ... \)
-    let parts = cleanText.split('$');
-    let newText = "";
-    for (let i = 0; i < parts.length; i++) {
-      if (i === parts.length - 1) {
-        newText += parts[i];
-      } else if (i % 2 === 0) {
-        newText += parts[i] + '\\(';
-      } else {
-        newText += parts[i] + '\\)';
-      }
-    }
-    cleanText = newText;
-
-    // Trả lại các khối $$ gốc
-    cleanText = cleanText.split('__SAFARI_DOUBLE__').join('$$');
+    // Đưa tất cả \( \) và \[ \] về chung chuẩn $ và $$ để thuật toán bên dưới tự xử
+    cleanText = cleanText.split('\\(').join('$').split('\\)').join('$');
+    cleanText = cleanText.split('\\[').join('$$').split('\\]').join('$$');
 
     return cleanText.trim();
   }
 
   render() {
     const rawData = this.props.children || "";
-    const safeText = this.formatLatexContent(rawData);
+    const cleanText = this.formatLatexContent(rawData);
 
-    if (this.state.hasError) {
-      return (
-        <span className="text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100 text-sm italic">
-          {safeText}
-        </span>
-      );
+    // =========================================================================
+    // THUẬT TOÁN ĐỌC TOÁN HỌC KHÔNG DÙNG REGEX (CHỐNG SẬP SAFARI 100%)
+    // =========================================================================
+    const parts = [];
+    let currentString = "";
+    let i = 0;
+
+    while (i < cleanText.length) {
+      // Bắt khối $$ ... $$
+      if (cleanText.substring(i, i + 2) === '$$') {
+        if (currentString) parts.push({ type: 'text', content: currentString });
+        currentString = "";
+        i += 2;
+        let mathStr = "";
+        while (i < cleanText.length && cleanText.substring(i, i + 2) !== '$$') {
+          mathStr += cleanText[i];
+          i++;
+        }
+        // Đặt display: false để ép tất cả lên 1 dòng, chống cách hàng
+        parts.push({ type: 'math', display: false, content: mathStr });
+        i += 2;
+      } 
+      // Bắt khối $ ... $
+      else if (cleanText[i] === '$') {
+        if (currentString) parts.push({ type: 'text', content: currentString });
+        currentString = "";
+        i++;
+        let mathStr = "";
+        while (i < cleanText.length && cleanText[i] !== '$') {
+          mathStr += cleanText[i];
+          i++;
+        }
+        parts.push({ type: 'math', display: false, content: mathStr });
+        i++;
+      } 
+      // Chữ bình thường
+      else {
+        currentString += cleanText[i];
+        i++;
+      }
     }
+    if (currentString) parts.push({ type: 'text', content: currentString });
 
+    // Render kết quả an toàn
     return (
       <span className="latex-container-safari" style={{ whiteSpace: 'pre-wrap' }}>
-        {/* KHÔNG DÙNG DELIMITERS NỮA! 
-            Để thư viện dùng bộ parser gốc cực kỳ mạnh mẽ của nó.
-            Nó sẽ tự động hiểu \( \) là toán nội tuyến và render đẹp mượt mà! 
-        */}
-        <Latex strict="ignore">
-          {safeText}
-        </Latex>
+        {parts.map((part, index) => {
+          if (part.type === 'text') {
+            // Chữ thường thì cứ thế in ra
+            return <span key={index}>{part.content}</span>;
+          } else {
+            // Toán học thì gọi lõi KaTeX dịch ra HTML (Siêu nhẹ và an toàn)
+            try {
+              const html = katex.renderToString(part.content, { 
+                throwOnError: false, 
+                displayMode: part.display // Ép thành Inline Math
+              });
+              return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+            } catch(e) {
+              return <span key={index} className="text-red-500">${part.content}$</span>;
+            }
+          }
+        })}
       </span>
     );
   }
