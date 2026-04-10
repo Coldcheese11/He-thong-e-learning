@@ -15,6 +15,7 @@ class SafeLatex extends Component {
   formatLatexContent(rawText) {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
+    // 1. DỌN DẸP MÔI TRƯỜNG CỦA FILE TEX TÀO LAO
     let cleanText = rawText
       .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
       .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
@@ -32,17 +33,8 @@ class SafeLatex extends Component {
     cleanText = cleanText.replace(/\\dfrac/g, '\\dfrac');
     cleanText = cleanText.replace(/\\vec/g, '\\vec');
 
-    // =========================================================================
-    // ÉP TẤT CẢ VỀ $$ (Cách an toàn nhất)
-    // =========================================================================
-    
-    // Đổi \(, \), \[, \] thành $$
-    cleanText = cleanText.split('\\(').join('$$').split('\\)').join('$$');
-    cleanText = cleanText.split('\\[').join('$$').split('\\]').join('$$');
-
-    // Thay thế toàn bộ $ (cả đơn và kép) thành $$ 
-    // Dùng Regex cực kỳ cơ bản, tương thích mọi trình duyệt
-    cleanText = cleanText.replace(/\$+/g, '$$$$');
+    // KHÔNG THAY ĐỔI, KHÔNG ĐỤNG CHẠM GÌ VÀO DẤU $ NỮA!
+    // Kệ ông thầy viết $ hay $$, giữ nguyên bản 100%.
 
     return cleanText.trim();
   }
@@ -64,7 +56,12 @@ class SafeLatex extends Component {
         <Latex 
           strict="ignore"
           delimiters={[
-            { left: "$$", right: "$$", display: true }
+            // BÍ KÍP Ở ĐÂY: Dạy KaTeX hiểu file của ông thầy
+            // Ép cả $$ và $ thành toán nội tuyến (display: false) để nó KHÔNG BAO GIỜ rớt dòng hay lỗi khoảng cách
+            { left: "$$", right: "$$", display: false }, 
+            { left: "$", right: "$", display: false },
+            { left: "\\[", right: "\\]", display: true },
+            { left: "\\(", right: "\\)", display: false }
           ]}
         >
           {safeText}
