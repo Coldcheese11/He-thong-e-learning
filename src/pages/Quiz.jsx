@@ -310,7 +310,8 @@ export default function Quiz() {
   // MÀN HÌNH NỘI QUY
   if (!isStarted) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-100 p-6">
+      // Đã sửa h-screen thành min-h-[100dvh]
+      <div className="flex min-h-[100dvh] items-center justify-center bg-gray-100 p-6">
         <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-2xl border border-red-100 text-center">
           <AlertTriangle className="mx-auto text-red-500 mb-4" size={64} />
           <h1 className="mb-6 text-2xl font-black text-gray-800">⚠️ NỘI QUY PHÒNG THI</h1>
@@ -322,7 +323,8 @@ export default function Quiz() {
           <button 
             onClick={() => {
               setIsStarted(true);
-              if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+              // CHÚ Ý: Đã xóa lệnh requestFullscreen ở đây đi! 
+              // Tuyệt đối không dùng lệnh này trực tiếp trên iOS nếu không có bẫy lỗi.
             }}
             className="w-full rounded-2xl bg-blue-600 py-5 text-xl font-bold text-white shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
           >
@@ -334,9 +336,11 @@ export default function Quiz() {
   }
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-gray-50">
-      {/* HEADER FIX CỨNG */}
-      <header className="flex items-center justify-between bg-white px-4 md:px-8 py-3 shadow-sm border-b z-30">
+    // SỬA TẠI ĐÂY 1: Xóa h-screen và overflow-hidden, thay bằng min-h-[100dvh] h-[100dvh] và relative
+    <div className="flex min-h-[100dvh] h-[100dvh] w-full flex-col bg-gray-50 relative">
+      
+      {/* SỬA TẠI ĐÂY 2: Thêm shrink-0 vào cuối class của header để nó không bị ép bẹp lại */}
+      <header className="flex items-center justify-between bg-white px-4 md:px-8 py-3 shadow-sm border-b z-30 shrink-0">
         <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-full ${violations > 0 ? 'bg-red-500 animate-ping' : 'bg-green-500'}`}></div>
             <h2 className="text-base md:text-xl font-black text-gray-800 truncate max-w-[150px] md:max-w-none">{exam?.title}</h2>
@@ -352,12 +356,14 @@ export default function Quiz() {
         </div>
       </header>
 
+      {/* CÁC PHẦN BÊN DƯỚI GIỮ NGUYÊN HOÀN TOÀN */}
       <div className="flex flex-1 overflow-hidden relative">
         {exam?.pdf_url && !exam.pdf_url.toLowerCase().endsWith('.tex') ? (
           <>
             {/* --- BÊN TRÁI: HIỂN THỊ PDF CHUẨN AZOTA --- */}
               <div className="w-full md:w-[65%] h-full bg-gray-100 overflow-hidden relative border-r">
                 <div className="h-full w-full overflow-y-auto custom-scrollbar">
+                  {/* Tạm thời đang comment PDF để test */}
                   {/*
                   <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
                     <Viewer 
@@ -365,10 +371,15 @@ export default function Quiz() {
                       plugins={[defaultLayoutPlugin()]} 
                     />
                   </Worker>*/}
+                  
+                  {/* Chữ báo tạm để biết giao diện đã lên */}
+                  <div className="flex items-center justify-center h-full">
+                     <p className="text-gray-500 font-bold">GIAO DIỆN ĐÃ HIỂN THỊ THÀNH CÔNG (Tạm ẩn PDF)</p>
+                  </div>
                 </div>
               </div>
                   
-            {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) - GIỮ NGUYÊN PHẦN DƯỚI CỦA BẠN */}
+            {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) */}
             <div className={`
               fixed bottom-0 left-0 w-full bg-white z-40 transition-all duration-500 ease-in-out shadow-[0_-15px_50px_rgba(0,0,0,0.2)]
               md:static md:w-[35%] md:h-full md:shadow-none md:translate-y-0 md:border-l
@@ -400,6 +411,7 @@ export default function Quiz() {
                     <div key={index} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl border border-gray-100 bg-gray-50/30 hover:bg-white hover:shadow-md transition-all group">
                       <span className="font-black text-gray-400 text-sm shrink-0 group-hover:text-blue-600 transition-colors">CÂU {index + 1}</span>
                       <div className="flex-1">
+                        {/* Lưu ý: Nếu đã chuyển SafeLatex thành span thì giữ nguyên, không thì để QuestionInput */}
                         <QuestionInput q={q} index={index} answers={answers} handleSelect={handleSelect} isFullMode={false} />
                       </div>
                     </div>
@@ -420,7 +432,6 @@ export default function Quiz() {
             <div className="max-w-4xl mx-auto space-y-12">
               {questions.map((q, index) => (
                 <div key={index} className="group relative">
-                  {/* Số thứ tự câu hỏi bay lơ lửng */}
                   <div className="absolute -left-12 top-0 hidden lg:flex items-center justify-center w-10 h-10 bg-gray-100 text-gray-400 rounded-xl font-black italic group-hover:bg-blue-600 group-hover:text-white transition-all">
                     {index + 1}
                   </div>
