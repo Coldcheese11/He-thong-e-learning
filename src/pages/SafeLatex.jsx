@@ -15,7 +15,6 @@ class SafeLatex extends Component {
   formatLatexContent(rawText) {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
-    // 1. DỌN DẸP MÔI TRƯỜNG (Giữ nguyên đoạn code an toàn của bạn)
     let cleanText = rawText
       .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
       .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
@@ -34,25 +33,16 @@ class SafeLatex extends Component {
     cleanText = cleanText.replace(/\\vec/g, '\\vec');
 
     // =========================================================================
-    // 2. ÉP TẤT CẢ VỀ CHUẨN $$ (Bí kíp dứt điểm lỗi \( \))
-    // Dùng split().join() để không bị lỗi Regex trên Safari
+    // ÉP TẤT CẢ VỀ $$ (Cách an toàn nhất)
     // =========================================================================
     
-    // Biến đổi \( \) và \[ \] thành $$
+    // Đổi \(, \), \[, \] thành $$
     cleanText = cleanText.split('\\(').join('$$').split('\\)').join('$$');
     cleanText = cleanText.split('\\[').join('$$').split('\\]').join('$$');
 
-    // Nếu lỡ đề thi cũ còn sót dấu $ đơn lẻ, cũng nâng cấp thành $$ luôn
-    let newText = "";
-    let tempText = cleanText.split('$$').join('__DOUBLE__'); // Cất $$ đi tạm
-    for (let i = 0; i < tempText.length; i++) {
-        if (tempText[i] === '$') {
-            newText += '$$'; 
-        } else {
-            newText += tempText[i];
-        }
-    }
-    cleanText = newText.split('__DOUBLE__').join('$$');
+    // Thay thế toàn bộ $ (cả đơn và kép) thành $$ 
+    // Dùng Regex cực kỳ cơ bản, tương thích mọi trình duyệt
+    cleanText = cleanText.replace(/\$+/g, '$$$$');
 
     return cleanText.trim();
   }
@@ -74,7 +64,6 @@ class SafeLatex extends Component {
         <Latex 
           strict="ignore"
           delimiters={[
-            // Chỉ cần để duy nhất $$ ở đây, vì mọi thứ đã được ép về $$ rồi
             { left: "$$", right: "$$", display: true }
           ]}
         >
