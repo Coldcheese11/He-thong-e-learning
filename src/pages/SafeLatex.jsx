@@ -15,7 +15,7 @@ class SafeLatex extends Component {
   formatLatexContent(rawText) {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
-    // 1. Dọn dẹp môi trường (đoạn code an toàn của bạn)
+    // 1. DỌN DẸP MÔI TRƯỜNG (Giữ nguyên đoạn code an toàn của bạn)
     let cleanText = rawText
       .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
       .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
@@ -24,41 +24,35 @@ class SafeLatex extends Component {
       .replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.')
       .replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1');
 
-    // Xử lý thông minh cho \immini để không bị dư ngoặc
     cleanText = cleanText
       .replace(/\\immini(?:\[.*?\])?\s*\{([\s\S]*?)\}\s*\{\s*(\[⚠️.*?\])\s*\}/g, '$1\n$2')
       .replace(/\\immini(?:\[.*?\])?\s*/g, '');
 
-    // Thêm dọn dẹp cơ bản
     cleanText = cleanText.replace(/^[\s\{]+/, '').replace(/[\s\}]+$/, '');
     cleanText = cleanText.replace(/\{(\[⚠️.*?\])\}/g, '$1');
     cleanText = cleanText.replace(/\\dfrac/g, '\\dfrac');
     cleanText = cleanText.replace(/\\vec/g, '\\vec');
 
     // =========================================================================
-    // 2. THUẬT TOÁN ĐỔI $...$ THÀNH \(...\) DỰA TRÊN TRẠNG THÁI (Giữ nguyên)
+    // 2. ÉP TẤT CẢ VỀ CHUẨN $$ (Bí kíp dứt điểm lỗi \( \))
+    // Dùng split().join() để không bị lỗi Regex trên Safari
     // =========================================================================
-    cleanText = cleanText.split('$$').join('__TEMP_BLOCK__');
+    
+    // Biến đổi \( \) và \[ \] thành $$
+    cleanText = cleanText.split('\\(').join('$$').split('\\)').join('$$');
+    cleanText = cleanText.split('\\[').join('$$').split('\\]').join('$$');
 
+    // Nếu lỡ đề thi cũ còn sót dấu $ đơn lẻ, cũng nâng cấp thành $$ luôn
     let newText = "";
-    let isMathMode = false;
-
-    for (let i = 0; i < cleanText.length; i++) {
-      if (cleanText[i] === '$') {
-        if (!isMathMode) {
-          newText += '\\(';
-          isMathMode = true;
+    let tempText = cleanText.split('$$').join('__DOUBLE__'); // Cất $$ đi tạm
+    for (let i = 0; i < tempText.length; i++) {
+        if (tempText[i] === '$') {
+            newText += '$$'; 
         } else {
-          newText += '\\)';
-          isMathMode = false;
+            newText += tempText[i];
         }
-      } else {
-        newText += cleanText[i];
-      }
     }
-
-    cleanText = newText;
-    cleanText = cleanText.split('__TEMP_BLOCK__').join('$$');
+    cleanText = newText.split('__DOUBLE__').join('$$');
 
     return cleanText.trim();
   }
@@ -80,10 +74,8 @@ class SafeLatex extends Component {
         <Latex 
           strict="ignore"
           delimiters={[
-            { left: "$$", right: "$$", display: true },
-            { left: "\\[", right: "\\]", display: true },
-            // THAY ĐỔI QUAN TRỌNG: display phải là true để Katex render \(...\)
-            { left: "\\(", right: "\\)", display: true } 
+            // Chỉ cần để duy nhất $$ ở đây, vì mọi thứ đã được ép về $$ rồi
+            { left: "$$", right: "$$", display: true }
           ]}
         >
           {safeText}
