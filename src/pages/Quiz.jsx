@@ -51,11 +51,13 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
     return (
       <div className={`space-y-3 w-full ${isFullMode ? 'max-w-full' : ''}`}>
         {['A', 'B', 'C', 'D'].map((label, i) => (
-          <div key={label} className={`flex ${isFullMode ? 'flex-col lg:flex-row lg:items-center' : 'items-center'} justify-between bg-gray-50 p-3 px-4 rounded-xl border border-gray-200 gap-4`}>
-            <div className="flex-1 text-base text-gray-800">
-              <span className="font-bold text-blue-700 mr-2 text-lg">{label}.</span>
-              {isFullMode && <span>{data?.[`opt_${label.toLowerCase()}`]}</span>}
+          <div key={label} className={`flex ${isFullMode ? 'flex-col lg:flex-row lg:items-center' : 'items-center'} justify-between bg-gray-50 p-4 rounded-xl border border-gray-200 gap-4`}>
+            {/* SỬA TẠI ĐÂY: Thêm flex, items-start và overflow-x-auto */}
+            <div className="flex-1 text-base text-gray-800 flex items-start overflow-x-auto custom-scrollbar">
+              <span className="font-bold text-blue-700 mr-3 text-lg shrink-0 mt-[-2px]">{label}.</span>
+              {isFullMode && <span className="flex-1">{data?.[`opt_${label.toLowerCase()}`]}</span>}
             </div>
+            
             <div className="flex gap-2 shrink-0">
               {['T', 'F'].map(val => (
                 <button
@@ -65,7 +67,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
                     currentArr[i] = val;
                     handleSelect(index + 1, currentArr.join(','));
                   }}
-                  className={`px-5 py-2 rounded-lg font-bold text-sm transition-all ${
+                  className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all ${
                     answers[index + 1]?.split(',')[i] === val 
                     ? 'bg-indigo-600 text-white shadow-md transform scale-105' 
                     : 'bg-white border-2 border-gray-200 text-gray-500 hover:border-indigo-300'
@@ -88,18 +90,26 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
         <button
           key={opt}
           onClick={() => handleSelect(index + 1, opt)}
-          className={`flex items-center font-bold transition-all border-2 ${
-            isFullMode ? 'p-4 rounded-2xl text-left' : 'h-12 w-full sm:w-12 rounded-xl justify-center'
+          // SỬA TẠI ĐÂY: Đổi items-center thành items-start cho isFullMode để text nhiều dòng không bị lỗi
+          className={`flex transition-all border-2 ${
+            isFullMode ? 'items-start p-4 rounded-2xl text-left' : 'items-center h-12 w-full sm:w-12 rounded-xl justify-center'
           } ${
             answers[index + 1] === opt 
             ? 'border-blue-600 bg-blue-600 text-white shadow-lg transform scale-105' 
             : 'border-gray-200 text-gray-600 bg-white hover:border-blue-400 hover:bg-blue-50'
           }`}
         >
-          <span className={`${isFullMode ? 'mr-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center' : ''}`}>
+          {/* SỬA TẠI ĐÂY: Thêm shrink-0 (Cứu tinh iOS) và mt-0.5 để căn vòng tròn ngang hàng dòng chữ đầu tiên */}
+          <span className={`${isFullMode ? 'shrink-0 mt-0.5 mr-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center font-black' : 'font-bold'}`}>
             {opt}
           </span>
-          {isFullMode && <span>{data?.[`opt_${opt.toLowerCase()}`]}</span>}
+          
+          {/* SỬA TẠI ĐÂY: Thêm flex-1 và overflow-x-auto để nội dung không chọc thủng khung màn hình */}
+          {isFullMode && (
+            <span className="flex-1 overflow-x-auto custom-scrollbar font-medium">
+              {data?.[`opt_${opt.toLowerCase()}`]}
+            </span>
+          )}
         </button>
       ))}
     </div>
