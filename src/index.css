@@ -1,10 +1,28 @@
 @import "tailwindcss";
-/* Ẩn bộ code MathML dành cho máy đọc màn hình để iPhone không bị hiện chữ đè lên nhau */
-.latex-container-fix .katex-mathml {
-  display: none !important;
+/* =========================================================================
+   FIX LỖI HIỂN THỊ KHOẢNG TRẮNG TOÁN HỌC TRÊN SAFARI (IOS) - BẢN TỐI ƯU
+   ========================================================================= */
+
+.latex-container-safari {
+  display: inline;
+  line-height: 1.6;
+  word-wrap: break-word;
 }
 
-/* Đảm bảo khung hiển thị ổn định */
-.latex-container-fix .katex-html {
-  display: inline-block !important;
+/* Cho phép Katex tự quyết định inline hay block, ta chỉ chặn margin thừa */
+.latex-container-safari .katex-display {
+  margin: 0.5em 0 !important; /* Tạo khoảng cách vừa đủ nếu là công thức lớn */
+  overflow-x: auto; /* Cuộn ngang nếu phương trình quá dài */
+  overflow-y: hidden;
+}
+
+/* Đảm bảo công thức nội tuyến (inline) nằm gọn gàng cạnh chữ */
+.latex-container-safari .katex {
+  font-size: 1.1em !important; 
+  padding: 0 2px !important; /* Tạo một khoảng thở siêu nhỏ giữa chữ và công thức */
+}
+
+/* Ẩn mã nguồn của máy đọc màn hình (Sửa lỗi chữ đè nhau) */
+.latex-container-safari .katex-mathml {
+  display: none !important;
 }
