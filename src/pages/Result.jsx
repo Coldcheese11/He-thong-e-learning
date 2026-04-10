@@ -12,6 +12,23 @@ export default function Result() {
 
   const { score, correct, total, questions, studentAnswers, examTitle } = data;
 
+  // BẢO VỆ CHỐNG SẬP TRANG: Nếu questions không tồn tại hoặc rỗng
+  if (!questions || !Array.isArray(questions) || questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="text-yellow-500 mb-4" size={64} />
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Không tìm thấy chi tiết bài thi</h2>
+        <p className="text-gray-500 mb-6">Dữ liệu bài thi đã hết hạn hoặc không có sẵn. Vui lòng quay lại danh sách đề thi.</p>
+        <button 
+          onClick={() => navigate('/dashboard')}
+          className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-md"
+        >
+          Quay lại Trang chủ
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       {/* THANH ĐIỀU HƯỚNG */}
@@ -52,9 +69,11 @@ export default function Result() {
         </h3>
         
         <div className="space-y-6">
-          {questions.map((q, index) => {
-            const studentOpt = studentAnswers[index + 1];
-            const correctOpt = q.question_bank?.correct_opt;
+          {/* Lớp bảo vệ bổ sung: (questions || []).map */}
+          {(questions || []).map((q, index) => {
+            // Cẩn thận với studentAnswers bị undefined
+            const studentOpt = (studentAnswers || {})[index + 1];
+            const correctOpt = q?.question_bank?.correct_opt;
             const isAnsweredCorrectly = studentOpt === correctOpt;
 
             return (
@@ -70,9 +89,8 @@ export default function Result() {
                   </div>
                   <div className="text-gray-800 text-lg leading-relaxed">
                     <span className="font-black text-blue-600 mr-2">Câu {index + 1}:</span>
-                    {/* SỬA TẠI ĐÂY: Bọc nội dung câu hỏi */}
                     <SafeLatex>
-                      {q.question_bank?.content || "Nội dung câu hỏi trong file PDF (Vui lòng xem lại đề)"}
+                      {q?.question_bank?.content || "Nội dung câu hỏi trong file PDF (Vui lòng xem lại đề)"}
                     </SafeLatex>
                   </div>
                 </div>
@@ -98,9 +116,8 @@ export default function Result() {
                           {opt}
                         </div>
                         <div className="flex-1 overflow-x-auto custom-scrollbar">
-                          {/* SỬA TẠI ĐÂY: Bọc nội dung đáp án */}
                           <SafeLatex>
-                            {q.question_bank?.[`opt_${opt.toLowerCase()}`] || "..."}
+                            {q?.question_bank?.[`opt_${opt.toLowerCase()}`] || "..."}
                           </SafeLatex>
                         </div>
                         
