@@ -15,7 +15,7 @@ class SafeLatex extends Component {
   formatLatexContent(rawText) {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
-    // 1. DỌN DẸP MÔI TRƯỜNG CỦA FILE TEX TÀO LAO
+    // 1. DỌN DẸP MÔI TRƯỜNG TỪ FILE GỐC
     let cleanText = rawText
       .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
       .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
@@ -33,8 +33,29 @@ class SafeLatex extends Component {
     cleanText = cleanText.replace(/\\dfrac/g, '\\dfrac');
     cleanText = cleanText.replace(/\\vec/g, '\\vec');
 
-    // KHÔNG THAY ĐỔI, KHÔNG ĐỤNG CHẠM GÌ VÀO DẤU $ NỮA!
-    // Kệ ông thầy viết $ hay $$, giữ nguyên bản 100%.
+    // =========================================================================
+    // 2. THUẬT TOÁN QUA MẶT SAFARI: Đổi $ đơn thành \( và \)
+    // =========================================================================
+    
+    // Cất tạm các khối $$ (nếu ông thầy có dùng) thành một chuỗi đặc biệt để không bị cắt nhầm
+    cleanText = cleanText.split('$$').join('__SAFARI_DOUBLE__');
+
+    // Cắt chuỗi theo dấu $ đơn và bọc \( ... \)
+    let parts = cleanText.split('$');
+    let newText = "";
+    for (let i = 0; i < parts.length; i++) {
+      if (i === parts.length - 1) {
+        newText += parts[i];
+      } else if (i % 2 === 0) {
+        newText += parts[i] + '\\(';
+      } else {
+        newText += parts[i] + '\\)';
+      }
+    }
+    cleanText = newText;
+
+    // Trả lại các khối $$ gốc
+    cleanText = cleanText.split('__SAFARI_DOUBLE__').join('$$');
 
     return cleanText.trim();
   }
@@ -53,17 +74,11 @@ class SafeLatex extends Component {
 
     return (
       <span className="latex-container-safari" style={{ whiteSpace: 'pre-wrap' }}>
-        <Latex 
-          strict="ignore"
-          delimiters={[
-            // BÍ KÍP Ở ĐÂY: Dạy KaTeX hiểu file của ông thầy
-            // Ép cả $$ và $ thành toán nội tuyến (display: false) để nó KHÔNG BAO GIỜ rớt dòng hay lỗi khoảng cách
-            { left: "$$", right: "$$", display: false }, 
-            { left: "$", right: "$", display: false },
-            { left: "\\[", right: "\\]", display: true },
-            { left: "\\(", right: "\\)", display: false }
-          ]}
-        >
+        {/* KHÔNG DÙNG DELIMITERS NỮA! 
+            Để thư viện dùng bộ parser gốc cực kỳ mạnh mẽ của nó.
+            Nó sẽ tự động hiểu \( \) là toán nội tuyến và render đẹp mượt mà! 
+        */}
+        <Latex strict="ignore">
           {safeText}
         </Latex>
       </span>
