@@ -182,3 +182,35 @@
     border-right-color: var(--border);
   }
 }
+
+/* =========================================================================
+   FIX LỖI HIỂN THỊ KHOẢNG TRẮNG TOÁN HỌC TRÊN SAFARI (IOS)
+   ========================================================================= */
+
+.latex-container-fix {
+  /* Ép tất cả các phần tử con phải hiển thị trên cùng một dòng (inline) */
+  display: inline !important;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+/* Triệt tiêu margin khổng lồ của các khối công thức dài trên iPhone */
+.latex-container-fix .katex-display {
+  display: inline-block !important; /* Không cho nó tự chiếm nguyên 1 dòng */
+  margin: 0 !important;
+  padding: 0 4px !important;
+  vertical-align: middle !important;
+}
+
+/* Đảm bảo các phân số, ma trận không làm bung khung màn hình điện thoại */
+.latex-container-fix .katex {
+  font-size: 1.05em !important;
+  text-align: left !important;
+  white-space: normal !important;
+}
+
+/* Ẩn bớt các thẻ dư thừa do react-latex-next sinh ra */
+.latex-container-fix p {
+  display: inline !important;
+  margin: 0 !important;
+}

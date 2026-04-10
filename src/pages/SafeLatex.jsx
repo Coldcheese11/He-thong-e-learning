@@ -16,22 +16,11 @@ class SafeLatex extends Component {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
     let cleanText = rawText
-      // 1. Cảnh báo hình ảnh/bảng biểu
       .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
       .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
-      
-      // 2. Dọn dẹp môi trường
       .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1')
       
-      // 3. QUAN TRỌNG: Chuẩn hóa mọi định dạng Toán về $$ ... $$
-      // Bắt các cặp \[ \] và \( \)
-      .replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$') 
-      .replace(/\\\(/g, '$$$$').replace(/\\\)/g, '$$$$')
-      
-      // Bắt các cặp $...$ đơn lẻ và biến thành $$...$$ (Bỏ qua nếu đã là $$)
-      .replace(/(?<!\$)\$([^$]+)\$(?!\$)/g, '$$$$$1$$$$')
-
-      // 4. Các lệnh đặc thù Latex
+      // Xử lý các lệnh đặc thù
       .replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}')
       .replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.')
       .replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1')
@@ -42,11 +31,10 @@ class SafeLatex extends Component {
       .replace(/\\dfrac/g, '\\dfrac')
       .replace(/\\vec/g, '\\vec')
       
-      // 5. XÓA KHOẢNG TRẮNG THỪA (Nguyên nhân gây xấu giao diện iPhone)
-      // Dọn dẹp các khoảng trắng bị kẹt giữa chữ và ký hiệu $$
-      .replace(/\s*\$\$\s*/g, '$$$$') 
+      // Thay thế ngoặc tròn của MathJax thành dấu $ tiêu chuẩn để Katex hiểu
+      .replace(/\\\(/g, '$').replace(/\\\)/g, '$')
+      .replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$')
       
-      // 6. Xử lý xuống dòng
       .replace(/\n/g, '<br/>');
 
     return cleanText.trim();
@@ -65,9 +53,15 @@ class SafeLatex extends Component {
     }
     
     return (
-      // FIX KHOẢNG TRẮNG: Thêm class 'inline' và bỏ 'inline-block' để chữ và toán học ôm sát nhau
-      <span className="latex-renderer inline max-w-full overflow-x-auto scrollbar-hide vertical-middle">
-        <Latex strict="ignore">
+      // Class .latex-container-fix là cực kỳ quan trọng cho bước 2
+      <span className="latex-container-fix">
+        <Latex 
+          strict="ignore"
+          delimiters={[
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }, // Cho phép $ hiển thị inline (không rớt dòng)
+          ]}
+        >
           {safeText}
         </Latex>
       </span>
