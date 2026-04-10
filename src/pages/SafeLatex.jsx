@@ -12,7 +12,7 @@ class SafeLatex extends Component {
     return { hasError: true };
   }
 
-  // HÀM TIỀN XỬ LÝ REGEX TỪ SMARTUPLOAD FILE TEX
+  // HÀM TIỀN XỬ LÝ DỮ LIỆU TỪ SMARTUPLOAD FILE TEX
   formatLatexContent(rawText) {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
@@ -24,9 +24,9 @@ class SafeLatex extends Component {
       // 2. Dọn dẹp các lệnh môi trường không cần thiết để hiển thị text thuần
       .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1')
       
-      // 3. CHUYỂN ĐỔI NGOẶC TOÁN HỌC (Rất quan trọng cho iPhone)
+      // 3. CHUYỂN ĐỔI NGOẶC TOÁN HỌC (Ép tất cả về $$ để iPhone render mượt nhất)
       .replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$') 
-      .replace(/\\\(/g, '$$').replace(/\\\)/g, '$$')
+      .replace(/\\\(/g, '$$$$').replace(/\\\)/g, '$$$$')
 
       // 4. CHUYỂN ĐỔI LỆNH \heva VÀ \hoac (Chuẩn Latex cho Katex)
       .replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}')
@@ -50,7 +50,31 @@ class SafeLatex extends Component {
       // 9. Giữ nguyên xuống hàng của văn bản
       .replace(/\n/g, '<br/>');
 
-    return cleanText.trim();
+    // ====================================================================
+    // 10. THUẬT TOÁN BẮT DẤU $ CHO IPHONE (Vòng lặp an toàn 100%)
+    // Thay vì dùng Regex phức tạp dễ làm sập Safari, ta dùng vòng lặp để 
+    // gom tất cả các dấu $ đơn thành $$ kép.
+    // ====================================================================
+    let finalString = "";
+    let i = 0;
+    while (i < cleanText.length) {
+      if (cleanText[i] === '$') {
+        if (cleanText[i + 1] === '$') {
+          // Nếu đã là $$ kép -> Giữ nguyên và nhảy qua
+          finalString += '$$';
+          i += 2; 
+        } else {
+          // Nếu là $ đơn -> Nâng cấp thành $$ kép để iPhone hiểu
+          finalString += '$$'; 
+          i += 1;
+        }
+      } else {
+        finalString += cleanText[i];
+        i += 1;
+      }
+    }
+    
+    return finalString.trim();
   }
 
   render() {
