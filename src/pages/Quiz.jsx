@@ -279,8 +279,8 @@ export default function Quiz() {
               {questions.map((q, index) => (
                 <div key={index} className="bg-white rounded-3xl p-6 md:p-8 border hover:border-blue-100 transition-all">
                   <div className="text-xl mb-8 leading-relaxed text-gray-800 font-medium flex flex-col md:block">
-  {/* Luôn hiển thị chữ Câu X, dùng block trên mobile để nó nằm trên 1 dòng riêng cho rõ */}
-  <span className="font-black text-blue-600 mr-2 mb-2 md:mb-0 block md:inline-block">Câu {index + 1}:</span>
+                    {/* Luôn hiển thị chữ Câu X, dùng block trên mobile để nó nằm trên 1 dòng riêng cho rõ */}
+                    <span className="font-black text-blue-600 mr-2 mb-2 md:mb-0 block md:inline-block">Câu {index + 1}:</span>
                     {/* FIX TẠI ĐÂY: Thay span bằng SafeLatex cho nội dung câu hỏi đề Text */}
                     <SafeLatex>{q?.question_bank?.content}</SafeLatex>
                   </div>

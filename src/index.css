@@ -1,1 +1,10 @@
 @import "tailwindcss";
+/* Ẩn bộ code MathML dành cho máy đọc màn hình để iPhone không bị hiện chữ đè lên nhau */
+.latex-container-fix .katex-mathml {
+  display: none !important;
+}
+
+/* Đảm bảo khung hiển thị ổn định */
+.latex-container-fix .katex-html {
+  display: inline-block !important;
+}
