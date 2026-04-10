@@ -15,56 +15,52 @@ class SafeLatex extends Component {
   formatLatexContent(rawText) {
     if (!rawText || typeof rawText !== 'string') return rawText;
 
-    let text = rawText;
+    // 1. Dọn dẹp môi trường (đoạn code an toàn của bạn)
+    let cleanText = rawText
+      .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
+      .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
+      .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1')
+      .replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}')
+      .replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.')
+      .replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1');
 
-    // 1. Dọn dẹp các môi trường cơ bản
-    text = text.replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n');
-    text = text.replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n');
-    text = text.replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1');
-    text = text.replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}');
-    text = text.replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.');
-    text = text.replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1');
-    text = text.replace(/\\immini(?:\[.*?\])?\s*\{([\s\S]*?)\}\s*\{\s*(\[⚠️.*?\])\s*\}/g, '$1\n$2');
-    text = text.replace(/\\immini(?:\[.*?\])?\s*/g, '');
-    text = text.replace(/^[\s\{]+/, '').replace(/[\s\}]+$/, '');
-    text = text.replace(/\{(\[⚠️.*?\])\}/g, '$1');
-    text = text.replace(/\\dfrac/g, '\\dfrac');
-    text = text.replace(/\\vec/g, '\\vec');
+    // Xử lý thông minh cho \immini để không bị dư ngoặc
+    cleanText = cleanText
+      .replace(/\\immini(?:\[.*?\])?\s*\{([\s\S]*?)\}\s*\{\s*(\[⚠️.*?\])\s*\}/g, '$1\n$2')
+      .replace(/\\immini(?:\[.*?\])?\s*/g, '');
+
+    // Thêm dọn dẹp cơ bản
+    cleanText = cleanText.replace(/^[\s\{]+/, '').replace(/[\s\}]+$/, '');
+    cleanText = cleanText.replace(/\{(\[⚠️.*?\])\}/g, '$1');
+    cleanText = cleanText.replace(/\\dfrac/g, '\\dfrac');
+    cleanText = cleanText.replace(/\\vec/g, '\\vec');
 
     // =========================================================================
-    // 3. THUẬT TOÁN ĐỔI $...$ THÀNH \(...\) DỰA TRÊN TRẠNG THÁI (STATE-BASED)
-    // Chắc chắn 100% không bao giờ trượt nhịp đóng/mở trên Safari
+    // 2. THUẬT TOÁN ĐỔI $...$ THÀNH \(...\) DỰA TRÊN TRẠNG THÁI (Giữ nguyên)
     // =========================================================================
-    
-    // Đảm bảo không bị lẫn lộn $$ thành $ đơn
-    text = text.split('$$').join('__TEMP_BLOCK__');
+    cleanText = cleanText.split('$$').join('__TEMP_BLOCK__');
 
     let newText = "";
-    let isMathMode = false; // Biến trạng thái: Đang ở trong công thức Toán hay chữ thường?
+    let isMathMode = false;
 
-    // Duyệt qua từng ký tự một
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === '$') {
+    for (let i = 0; i < cleanText.length; i++) {
+      if (cleanText[i] === '$') {
         if (!isMathMode) {
-          // Gặp $ đầu tiên -> Mở toán inline
           newText += '\\(';
           isMathMode = true;
         } else {
-          // Gặp $ thứ hai -> Đóng toán inline
           newText += '\\)';
           isMathMode = false;
         }
       } else {
-        newText += text[i];
+        newText += cleanText[i];
       }
     }
 
-    text = newText;
+    cleanText = newText;
+    cleanText = cleanText.split('__TEMP_BLOCK__').join('$$');
 
-    // Trả lại các khối $$ cũ (Nếu có)
-    text = text.split('__TEMP_BLOCK__').join('$$');
-
-    return text.trim();
+    return cleanText.trim();
   }
 
   render() {
@@ -86,7 +82,8 @@ class SafeLatex extends Component {
           delimiters={[
             { left: "$$", right: "$$", display: true },
             { left: "\\[", right: "\\]", display: true },
-            { left: "\\(", right: "\\)", display: false } // Katex sẽ xử lý an toàn
+            // THAY ĐỔI QUAN TRỌNG: display phải là true để Katex render \(...\)
+            { left: "\\(", right: "\\)", display: true } 
           ]}
         >
           {safeText}
