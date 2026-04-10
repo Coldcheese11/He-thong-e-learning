@@ -8,9 +8,10 @@ import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 import { Span } from 'katex/src/domTree.js';
-import vConsole from 'vconsole';
+import VConsole from 'vconsole';
+// Khởi tạo vConsole để nó hiện nút bấm trên màn hình điện thoại
 if (typeof window !== 'undefined') {
-  new vConsole();
+  new VConsole();
 }
 // =========================================================================
 // HÀM XÁO TRỘN MẢNG (Thuật toán Fisher-Yates)
@@ -357,16 +358,16 @@ export default function Quiz() {
             {/* --- BÊN TRÁI: HIỂN THỊ PDF CHUẨN AZOTA --- */}
               <div className="w-full md:w-[65%] h-full bg-gray-100 overflow-hidden relative border-r">
                 <div className="h-full w-full overflow-y-auto custom-scrollbar">
-                  
-                  {/*<Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+                  {/*
+                  <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
                     <Viewer 
                       fileUrl={exam.pdf_url}
-                      plugins={[defaultLayoutPlugin()]} /}
+                      plugins={[defaultLayoutPlugin()]} 
                     />
-                  </Worker>
+                  </Worker>*/}
                 </div>
               </div>
-
+                  
             {/* PHIẾU TRẢ LỜI (BOTTOM SHEET ON MOBILE) - GIỮ NGUYÊN PHẦN DƯỚI CỦA BẠN */}
             <div className={`
               fixed bottom-0 left-0 w-full bg-white z-40 transition-all duration-500 ease-in-out shadow-[0_-15px_50px_rgba(0,0,0,0.2)]
