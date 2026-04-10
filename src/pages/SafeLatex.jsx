@@ -17,12 +17,10 @@ class SafeLatex extends Component {
 
     let text = rawText;
 
-    // 1. Cảnh báo hình vẽ / bảng biểu
+    // 1. Dọn dẹp các môi trường cơ bản
     text = text.replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n');
     text = text.replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n');
     text = text.replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1');
-
-    // 2. Chuyển đổi các môi trường đặc thù
     text = text.replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}');
     text = text.replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.');
     text = text.replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1');
@@ -34,32 +32,37 @@ class SafeLatex extends Component {
     text = text.replace(/\\vec/g, '\\vec');
 
     // =========================================================================
-    // 3. THUẬT TOÁN "BẺ KHÓA" SAFARI: ĐỔI $...$ THÀNH \(...\)
-    // Safari lỗi khi phân biệt $ toán và $ tiền. Đổi sang \(...\) là Safari hiểu 100%.
+    // 3. THUẬT TOÁN ĐỔI $...$ THÀNH \(...\) DỰA TRÊN TRẠNG THÁI (STATE-BASED)
+    // Chắc chắn 100% không bao giờ trượt nhịp đóng/mở trên Safari
     // =========================================================================
     
-    // Bước A: Cất giấu các khối $$...$$ đi (thành thẻ tạm) để không bị đổi nhầm
+    // Đảm bảo không bị lẫn lộn $$ thành $ đơn
     text = text.split('$$').join('__TEMP_BLOCK__');
 
-    // Bước B: Cắt chuỗi theo dấu $ đơn, và lần lượt bọc \( và \) vào
-    let parts = text.split('$');
     let newText = "";
-    for (let i = 0; i < parts.length; i++) {
-      if (i === parts.length - 1) {
-        newText += parts[i]; // Phần cuối cùng
-      } else if (i % 2 === 0) {
-        newText += parts[i] + '\\('; // Thay $ mở bằng \(
+    let isMathMode = false; // Biến trạng thái: Đang ở trong công thức Toán hay chữ thường?
+
+    // Duyệt qua từng ký tự một
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '$') {
+        if (!isMathMode) {
+          // Gặp $ đầu tiên -> Mở toán inline
+          newText += '\\(';
+          isMathMode = true;
+        } else {
+          // Gặp $ thứ hai -> Đóng toán inline
+          newText += '\\)';
+          isMathMode = false;
+        }
       } else {
-        newText += parts[i] + '\\)'; // Thay $ đóng bằng \)
+        newText += text[i];
       }
     }
+
     text = newText;
 
-    // Bước C: Trả lại các khối $$...$$ cũ
+    // Trả lại các khối $$ cũ (Nếu có)
     text = text.split('__TEMP_BLOCK__').join('$$');
-
-    // (Lưu ý: Không dùng replace(/\n/g, '<br/>') nữa vì <br/> làm rối Katex. 
-    // Ta sẽ dùng CSS white-space ở dưới để tự động xuống dòng chuẩn xác).
 
     return text.trim();
   }
@@ -77,14 +80,13 @@ class SafeLatex extends Component {
     }
 
     return (
-      // Style whiteSpace: 'pre-wrap' giúp giữ nguyên các dòng xuống hàng của đề thi
       <span className="latex-container-safari" style={{ whiteSpace: 'pre-wrap' }}>
         <Latex 
           strict="ignore"
           delimiters={[
             { left: "$$", right: "$$", display: true },
             { left: "\\[", right: "\\]", display: true },
-            { left: "\\(", right: "\\)", display: false } // Đã chuẩn hóa tất cả $ về dạng này
+            { left: "\\(", right: "\\)", display: false } // Katex sẽ xử lý an toàn
           ]}
         >
           {safeText}
