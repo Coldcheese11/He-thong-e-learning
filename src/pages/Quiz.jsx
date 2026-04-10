@@ -7,12 +7,13 @@ import { Worker, Viewer } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
-import { Span } from 'katex/src/domTree.js';
-import VConsole from 'vconsole';
-// Khởi tạo vConsole để nó hiện nút bấm trên màn hình điện thoại
-if (typeof window !== 'undefined') {
-  new VConsole();
-}
+
+// Tạm thời tắt vConsole nếu không cần thiết nữa, nếu lỗi quay lại thì bật lên.
+// import VConsole from 'vconsole';
+// if (typeof window !== 'undefined') {
+//   new VConsole();
+// }
+
 // =========================================================================
 // HÀM XÁO TRỘN MẢNG (Thuật toán Fisher-Yates)
 // =========================================================================
@@ -121,6 +122,9 @@ export default function Quiz() {
   const [violations, setViolations] = useState(0);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
+  // Khởi tạo plugin cho PDF Viewer
+  const defaultLayoutPluginInstance = defaultLayoutPlugin();
+
 // 1. TẢI DỮ LIỆU & KIỂM TRA CHỐNG THI LẠI
   useEffect(() => {
     const loadData = async () => {
@@ -148,7 +152,7 @@ export default function Quiz() {
           return;
         }
 
-        // BƯỚC 2: Lấy thông tin đề thi (exData) - ĐOẠN NÀY BẠN BỊ THIẾU
+        // BƯỚC 2: Lấy thông tin đề thi (exData)
         const { data: exData, error: exError } = await supabase
           .from('exams')
           .select('*')
@@ -223,13 +227,12 @@ export default function Quiz() {
         setLoading(false);
       } catch (error) {
         console.error("Lỗi:", error);
-        // THÊM DÒNG NÀY ĐỂ HIỆN LỖI TRÊN MÀN HÌNH ĐIỆN THOẠI
         alert("LỖI RỒI: " + error.message); 
         setLoading(false);
       }
     };
     loadData();
-  }, [id]);
+  }, [id, navigate]);
 
   // 2. GIÁM THỊ ẢO & CHEATING
   useEffect(() => {
@@ -310,7 +313,6 @@ export default function Quiz() {
   // MÀN HÌNH NỘI QUY
   if (!isStarted) {
     return (
-      // Đã sửa h-screen thành min-h-[100dvh]
       <div className="flex min-h-[100dvh] items-center justify-center bg-gray-100 p-6">
         <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-2xl border border-red-100 text-center">
           <AlertTriangle className="mx-auto text-red-500 mb-4" size={64} />
@@ -323,8 +325,6 @@ export default function Quiz() {
           <button 
             onClick={() => {
               setIsStarted(true);
-              // CHÚ Ý: Đã xóa lệnh requestFullscreen ở đây đi! 
-              // Tuyệt đối không dùng lệnh này trực tiếp trên iOS nếu không có bẫy lỗi.
             }}
             className="w-full rounded-2xl bg-blue-600 py-5 text-xl font-bold text-white shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
           >
@@ -336,10 +336,8 @@ export default function Quiz() {
   }
 
   return (
-    // SỬA TẠI ĐÂY 1: Xóa h-screen và overflow-hidden, thay bằng min-h-[100dvh] h-[100dvh] và relative
     <div className="flex min-h-[100dvh] h-[100dvh] w-full flex-col bg-gray-50 relative">
       
-      {/* SỬA TẠI ĐÂY 2: Thêm shrink-0 vào cuối class của header để nó không bị ép bẹp lại */}
       <header className="flex items-center justify-between bg-white px-4 md:px-8 py-3 shadow-sm border-b z-30 shrink-0">
         <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-full ${violations > 0 ? 'bg-red-500 animate-ping' : 'bg-green-500'}`}></div>
@@ -356,26 +354,19 @@ export default function Quiz() {
         </div>
       </header>
 
-      {/* CÁC PHẦN BÊN DƯỚI GIỮ NGUYÊN HOÀN TOÀN */}
       <div className="flex flex-1 overflow-hidden relative">
         {exam?.pdf_url && !exam.pdf_url.toLowerCase().endsWith('.tex') ? (
           <>
             {/* --- BÊN TRÁI: HIỂN THỊ PDF CHUẨN AZOTA --- */}
               <div className="w-full md:w-[65%] h-full bg-gray-100 overflow-hidden relative border-r">
-                <div className="h-full w-full overflow-y-auto custom-scrollbar">
-                  {/* Tạm thời đang comment PDF để test */}
-                  {/*
-                  <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+                <div className="h-full w-full custom-scrollbar">
+                  {/* BẬT LẠI PDF VIEWER */}
+                  <Worker workerUrl="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js">
                     <Viewer 
                       fileUrl={exam.pdf_url}
-                      plugins={[defaultLayoutPlugin()]} 
+                      plugins={[defaultLayoutPluginInstance]} 
                     />
-                  </Worker>*/}
-                  
-                  {/* Chữ báo tạm để biết giao diện đã lên */}
-                  <div className="flex items-center justify-center h-full">
-                     <p className="text-gray-500 font-bold">GIAO DIỆN ĐÃ HIỂN THỊ THÀNH CÔNG (Tạm ẩn PDF)</p>
-                  </div>
+                  </Worker>
                 </div>
               </div>
                   
@@ -385,7 +376,6 @@ export default function Quiz() {
               md:static md:w-[35%] md:h-full md:shadow-none md:translate-y-0 md:border-l
               ${isMobileSheetOpen ? 'h-[75vh] translate-y-0' : 'h-14 translate-y-0 md:h-full'}
             `}>
-              {/* Thanh trượt cho Mobile */}
               <div 
                 className="md:hidden flex flex-col items-center py-3 cursor-pointer bg-white rounded-t-3xl border-t border-gray-100"
                 onClick={() => setIsMobileSheetOpen(!isMobileSheetOpen)}
@@ -411,7 +401,6 @@ export default function Quiz() {
                     <div key={index} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl border border-gray-100 bg-gray-50/30 hover:bg-white hover:shadow-md transition-all group">
                       <span className="font-black text-gray-400 text-sm shrink-0 group-hover:text-blue-600 transition-colors">CÂU {index + 1}</span>
                       <div className="flex-1">
-                        {/* Lưu ý: Nếu đã chuyển SafeLatex thành span thì giữ nguyên, không thì để QuestionInput */}
                         <QuestionInput q={q} index={index} answers={answers} handleSelect={handleSelect} isFullMode={false} />
                       </div>
                     </div>
@@ -421,7 +410,6 @@ export default function Quiz() {
               </div>
             </div>
 
-            {/* Lớp phủ khi mở sheet mobile */}
             {isMobileSheetOpen && (
               <div className="fixed inset-0 bg-black/40 z-30 md:hidden backdrop-blur-sm" onClick={() => setIsMobileSheetOpen(false)}></div>
             )}
