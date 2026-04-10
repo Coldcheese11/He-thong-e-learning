@@ -53,7 +53,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
           <div key={label} className={`flex ${isFullMode ? 'flex-col lg:flex-row lg:items-center' : 'items-center'} justify-between bg-gray-50 p-3 px-4 rounded-xl border border-gray-200 gap-4`}>
             <div className="flex-1 text-base text-gray-800">
               <span className="font-bold text-blue-700 mr-2 text-lg">{label}.</span>
-              {isFullMode && <Span>{data?.[`opt_${label.toLowerCase()}`]}</Span>}
+              {isFullMode && <span>{data?.[`opt_${label.toLowerCase()}`]}</span>}
             </div>
             <div className="flex gap-2 shrink-0">
               {['T', 'F'].map(val => (
@@ -98,7 +98,7 @@ const QuestionInput = ({ q, index, answers, handleSelect, isFullMode }) => {
           <span className={`${isFullMode ? 'mr-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center' : ''}`}>
             {opt}
           </span>
-          {isFullMode && <Span>{data?.[`opt_${opt.toLowerCase()}`]}</Span>}
+          {isFullMode && <span>{data?.[`opt_${opt.toLowerCase()}`]}</span>}
         </button>
       ))}
     </div>
