@@ -8,6 +8,9 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [message, setMessage] = useState('');
   
+  // Thêm state để lưu Role khi đăng ký (mặc định là học sinh)
+  const [selectedRole, setSelectedRole] = useState('student'); 
+  
   const navigate = useNavigate(); 
 
   const handleAuth = async (e) => {
@@ -15,10 +18,10 @@ export default function Login() {
     setMessage('Đang xử lý...');
 
     if (isRegister) {
-      // ĐĂNG KÝ (Mặc định ai tự đăng ký trên web cũng là Học sinh)
+      // ĐĂNG KÝ: Truyền selectedRole thay vì hardcode 'student'
       const { data, error } = await supabase
         .from('users')
-        .insert([{ phone_number: phone, full_name: fullName, role: 'student' }])
+        .insert([{ phone_number: phone, full_name: fullName, role: selectedRole }])
         .select();
       
       if (error) {
@@ -32,7 +35,14 @@ export default function Login() {
         localStorage.setItem('user_name', newUser.full_name);    
         localStorage.setItem('user_role', newUser.role);    
         
-        setTimeout(() => navigate('/dashboard'), 1000); 
+        // Điều hướng sau khi đăng ký thành công (dựa vào role)
+        setTimeout(() => {
+          if (newUser.role === 'teacher') {
+            navigate('/admin');
+          } else {
+            navigate('/dashboard');
+          }
+        }, 1000); 
       }
     } else {
       // ĐĂNG NHẬP
@@ -69,26 +79,61 @@ export default function Login() {
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-gray-100">
         <h2 className="mb-6 text-center text-2xl font-bold text-blue-600">
           {isRegister ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập Hệ Thống'}
         </h2>
 
         <form onSubmit={handleAuth} className="flex flex-col space-y-4">
+          
+          {/* --- KHU VỰC CHỈ HIỆN KHI ĐĂNG KÝ --- */}
           {isRegister && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Họ và Tên</label>
-              <input
-                type="text"
-                required
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-3 focus:border-blue-500 focus:outline-none"
-                placeholder="VD: Nguyễn Văn A"
-              />
-            </div>
+            <>
+              {/* Chọn Quyền */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Bạn là:</label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole('student')}
+                    className={`flex-1 rounded-xl border-2 p-3 text-center font-bold transition-all ${
+                      selectedRole === 'student' 
+                        ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    Học Sinh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole('teacher')}
+                    className={`flex-1 rounded-xl border-2 p-3 text-center font-bold transition-all ${
+                      selectedRole === 'teacher' 
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700' 
+                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    Giáo Viên
+                  </button>
+                </div>
+              </div>
+
+              {/* Nhập Tên */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Họ và Tên</label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  placeholder="VD: Nguyễn Văn A"
+                />
+              </div>
+            </>
           )}
 
+          {/* --- KHU VỰC DÙNG CHUNG --- */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Số điện thoại</label>
             <input
@@ -96,36 +141,38 @@ export default function Login() {
               required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-3 focus:border-blue-500 focus:outline-none font-mono text-lg tracking-wider"
+              className="w-full rounded-lg border border-gray-300 p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none font-mono text-lg tracking-wider transition-all"
               placeholder="09..."
             />
           </div>
 
           <button
             type="submit"
-            className="mt-4 rounded-lg bg-blue-600 p-3 text-white font-semibold hover:bg-blue-700 transition-colors"
+            className="mt-4 rounded-xl bg-blue-600 p-3.5 text-white font-bold text-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
           >
             {isRegister ? 'Đăng Ký Ngay' : 'Vào Thi'}
           </button>
         </form>
 
         {message && (
-          <div className={`mt-4 rounded-lg p-3 text-center text-sm font-medium ${message.includes('❌') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
+          <div className={`mt-5 rounded-lg p-3 text-center text-sm font-medium ${message.includes('❌') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
             {message}
           </div>
         )}
 
-        <div className="mt-6 text-center text-sm text-gray-600">
+        <div className="mt-6 text-center text-sm text-gray-600 border-t pt-5">
           {isRegister ? 'Đã có tài khoản? ' : 'Chưa có tài khoản? '}
           <button
             onClick={() => {
               setIsRegister(!isRegister);
               setMessage('');
               setPhone('');
+              setFullName('');
+              setSelectedRole('student'); // Reset về mặc định
             }}
-            className="font-semibold text-blue-600 hover:underline"
+            className="font-bold text-blue-600 hover:underline"
           >
-            {isRegister ? 'Đăng nhập ngay' : 'Đăng ký mới'}
+            {isRegister ? 'Đăng nhập ngay' : 'Đăng ký tài khoản Giáo viên / Học sinh'}
           </button>
         </div>
       </div>

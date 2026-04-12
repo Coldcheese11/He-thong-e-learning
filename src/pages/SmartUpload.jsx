@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
 import * as mammoth from 'mammoth';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
-import { GoogleGenAI } from '@google/genai';
+import BlockEditor from '../components/BlockEditor';
 
 // =========================================================================
 // 🛡️ LỚP BẢO VỆ CÔNG THỨC TOÁN (ERROR BOUNDARY)
@@ -34,6 +34,222 @@ class SafeLatex extends Component {
     );
   }
 }
+
+const parseWordHTMLToQuestions = (htmlString) => {
+    const questions = [];
+
+    // 1. CẢNH BÁO WMF (Giữ nguyên thẻ HTML để render màu đỏ)
+    let processedHtml = htmlString.replace(/<img[^>]+src="data:image\/[x\-]*wmf[^>]*>/gi, '<span class="text-red-500 font-bold bg-red-50 px-2 py-1 mx-1 rounded text-[10px] border border-red-200" title="Lỗi Equation 3.0">[⚠️ LỖI CÔNG THỨC WMF - DÙNG MATHTYPE ĐỂ SỬA]</span>');
+
+    // BÍ KÍP: KHÔNG ĐƯỢC XÓA CHỮ [Mức độ] Ở ĐÂY, VÌ TA SẼ DÙNG NÓ LÀM "MỎ NEO" TÌM CÂU HỎI
+
+    // 2. MÁY ÉP PHẲNG (GIỮ NGUYÊN HTML ĐỂ KHÔNG MẤT ẢNH)
+    const flattenHTML = (htmlStr) => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlStr, 'text/html');
+        const blocks = [];
+
+        const walk = (node) => {
+            if (['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'SECTION'].includes(node.nodeName)) {
+                const parts = node.innerHTML.split(/<br\s*\/?>/i);
+                parts.forEach(p => { if (p.trim()) blocks.push(p.trim()); });
+            } else if (node.nodeName === 'TABLE') {
+                blocks.push(node.outerHTML); 
+            } else if (['UL', 'OL', 'TBODY'].includes(node.nodeName)) {
+                Array.from(node.childNodes).forEach(walk);
+            } else if (node.nodeType === 3 && node.textContent.trim()) {
+                blocks.push(node.textContent.trim());
+            } else if (node.nodeType === 1) {
+                Array.from(node.childNodes).forEach(walk);
+            }
+        };
+        Array.from(doc.body.childNodes).forEach(walk);
+        return blocks;
+    };
+
+    const rawLines = flattenHTML(processedHtml);
+
+    // 3. KHÂU NỐI DÒNG MỒ CÔI
+    const lines = [];
+    let pendingPrefix = "";
+    for (let i = 0; i < rawLines.length; i++) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = rawLines[i];
+        const cleanText = tempDiv.textContent.replace(/\s+/g, ' ').trim();
+
+        if (/^(Câu|Bài|Question)\s*$/i.test(cleanText)) {
+            pendingPrefix = rawLines[i] + ' '; 
+            continue;
+        }
+        if (pendingPrefix) {
+            lines.push(pendingPrefix + rawLines[i]);
+            pendingPrefix = "";
+        } else {
+            lines.push(rawLines[i]);
+        }
+    }
+    if (pendingPrefix) lines.push(pendingPrefix);
+
+    // 4. CỖ MÁY TRẠNG THÁI
+    let currentSectionType = 'multiple_choice'; 
+    let currentQuestion = null; 
+    let qCount = 1;
+
+    const pushCurrentQuestion = () => {
+        if (currentQuestion) {
+            if (!currentQuestion.opt_a && !currentQuestion.opt_b && currentSectionType === 'multiple_choice') {
+                currentQuestion.type = 'fill_blank';
+                currentQuestion.correct_opt = '';
+            }
+            questions.push(currentQuestion);
+            currentQuestion = null;
+        }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        let nodeHtml = lines[i];
+        
+        // Tạo biến text thô để chạy Regex, nhưng KẾT QUẢ GÁN VÀO WEB PHẢI LÀ nodeHtml (Để giữ ảnh)
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = nodeHtml;
+        const rawText = (tempDiv.textContent || '').replace(/\s+/g, ' ').trim();
+
+        if (/^(HƯỚNG DẪN GIẢI|LỜI GIẢI CHI TIẾT|ĐÁP ÁN VÀ LỜI GIẢI|BẢNG ĐÁP ÁN|ĐÁP ÁN)$/i.test(rawText)) break;
+
+        // BẮT CHUYỂN PHẦN
+        const secMatch = rawText.match(/(?:^|\W*)PHẦN\s*([I1]{1,3}|[1-3])/i);
+        if (secMatch && rawText.length < 250) { 
+            pushCurrentQuestion();
+            const secNum = secMatch[1].toUpperCase();
+            
+            if (/(đúng|sai)/i.test(rawText)) currentSectionType = 'true_false';
+            else if (/(ngắn|điền|tự luận)/i.test(rawText)) currentSectionType = 'fill_blank';
+            else if (secNum === 'I' || secNum === '1') currentSectionType = 'multiple_choice';
+            else if (secNum === 'II' || secNum === '2') currentSectionType = 'true_false';
+            else if (secNum === 'III' || secNum === '3') currentSectionType = 'fill_blank';
+            continue;
+        }
+
+        // 🔥 ĐIỂM CHẾT LÀ ĐÂY: NHẬN DIỆN BẰNG "CÂU X" HOẶC "[MỨC ĐỘ Y]" 🔥
+        const isNewQuestion = /^(?:\W*)(?:Câu\s*\d+|\[\s*Mức\s*độ\s*\d+\s*\])/i.test(rawText);
+
+        if (isNewQuestion && rawText.length > 5) {
+            pushCurrentQuestion();
+
+            const optRegexStr = currentSectionType === 'true_false' 
+                ? "(?:\\s*<[^>]+>\\s*)*(?:a|b|c|d)[\\.\\:\\)\\/]\\s*" 
+                : "(?:\\s*<[^>]+>\\s*)*(?:A|B|C|D)[\\.\\:\\)\\/]\\s*";
+            const optSplitRegex = new RegExp(`(?=${optRegexStr})`, 'i');
+            
+            // Cắt Đề và Đáp án
+            const parts = nodeHtml.split(optSplitRegex);
+
+            // Gọt bỏ chữ "Câu X" và "[Mức độ Y]" ra khỏi Đề bài để giao diện sạch sẽ
+            let cleanHtml = parts[0]
+                .replace(/^(?:\s*<[^>]+>\s*)*Câu\s*\d+[\.\:\-\s]*/i, '')
+                .replace(/\[\s*Mức\s*độ\s*\d+\s*\]/gi, '')
+                .trim();
+
+            currentQuestion = {
+                id: qCount++,
+                type: currentSectionType,
+                content: cleanHtml,
+                opt_a: '', opt_b: '', opt_c: '', opt_d: '',
+                correct_opt: currentSectionType === 'true_false' ? 'F,F,F,F' : (currentSectionType === 'fill_blank' ? '' : 'A'),
+                image_file: null, image_preview: null,
+                isEditing: false
+            };
+
+            // Nếu A B C D nằm chung dòng
+            if (parts.length > 1) {
+                for (let j = 1; j < parts.length; j++) {
+                    const p = parts[j];
+                    const tDiv = document.createElement('div');
+                    tDiv.innerHTML = p;
+                    const pText = tDiv.textContent.replace(/\s+/g, ' ').trim();
+
+                    const match = currentSectionType === 'true_false' 
+                        ? pText.match(/^(?:\W*)(a|b|c|d)[\.\:\)\/]/i) 
+                        : pText.match(/^(?:\W*)(A|B|C|D)[\.\:\)\/]/i);
+                        
+                    if (match) {
+                        const l = match[1].toLowerCase();
+                        const cleanOptHtml = p.replace(/^(?:\s*<[^>]+>\s*)*(?:A|B|C|D|a|b|c|d)[\.\:\)\/]/i, '').trim();
+                        currentQuestion[`opt_${l}`] += cleanOptHtml;
+                    }
+                }
+            }
+            continue; 
+        }
+
+        // BẮT ĐÁP ÁN ĐỘC LẬP & NỐI DÒNG
+        if (currentQuestion) {
+            const isOptionsLine = currentSectionType === 'true_false' 
+                ? /^(?:\W*)(a|b|c|d)[\.\:\)\/]\s*/i.test(rawText) 
+                : /^(?:\W*)(A|B|C|D)[\.\:\)\/]\s*/i.test(rawText);
+
+            if (isOptionsLine && currentSectionType !== 'fill_blank') {
+                const splitRegex = currentSectionType === 'true_false' 
+                    ? /(?=(?:^|>|\s+)(?:a|b|c|d)[\.\:\)\/]\s*)/i 
+                    : /(?=(?:^|>|\s+)(?:A|B|C|D)[\.\:\)\/]\s*)/i;
+                
+                const parts = nodeHtml.split(splitRegex);
+                parts.forEach(p => {
+                    const tDiv = document.createElement('div');
+                    tDiv.innerHTML = p;
+                    const pText = tDiv.textContent.replace(/\s+/g, ' ').trim();
+                    
+                    const match = currentSectionType === 'true_false' 
+                        ? pText.match(/^(?:\W*)(a|b|c|d)[\.\:\)\/]\s*/i) 
+                        : pText.match(/^(?:\W*)(A|B|C|D)[\.\:\)\/]\s*/i);
+                        
+                    if (match) {
+                        const l = match[1].toLowerCase();
+                        const cleanOptHtml = p.replace(/^(?:\s*<[^>]+>\s*)*(?:A|B|C|D|a|b|c|d)[\.\:\)\/]/i, '').trim();
+                        currentQuestion[`opt_${l}`] += cleanOptHtml;
+                    }
+                });
+            } else {
+                if (nodeHtml.startsWith('<table')) {
+                    if (/A[\.\:\)]/i.test(rawText) && /B[\.\:\)]/i.test(rawText)) {
+                        const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+                        let tdMatch;
+                        while ((tdMatch = tdRegex.exec(nodeHtml)) !== null) {
+                            const tdHtml = tdMatch[1];
+                            const tDiv = document.createElement('div');
+                            tDiv.innerHTML = tdHtml;
+                            const tdText = tDiv.textContent.replace(/\s+/g, ' ').trim();
+                            
+                            const match = currentSectionType === 'true_false' 
+                                ? tdText.match(/^(?:\W*)(a|b|c|d)[\.\:\)\/]/i) 
+                                : tdText.match(/^(?:\W*)(A|B|C|D)[\.\:\)\/]/i);
+                            
+                            if (match) {
+                                const l = match[1].toLowerCase();
+                                const cleanOptHtml = tdHtml.replace(/^(?:\s*<[^>]+>\s*)*(?:A|B|C|D|a|b|c|d)[\.\:\)\/]/i, '').trim();
+                                currentQuestion[`opt_${l}`] = cleanOptHtml;
+                            }
+                        }
+                    } else {
+                        currentQuestion.content += `<div class="overflow-x-auto my-3 p-2 bg-white border rounded shadow-sm">${nodeHtml}</div>`;
+                    }
+                } else {
+                    if (currentSectionType !== 'fill_blank' && (currentQuestion.opt_a || currentQuestion.opt_b)) {
+                        if (currentQuestion.opt_d) currentQuestion.opt_d += `<br/>${nodeHtml}`;
+                        else if (currentQuestion.opt_c) currentQuestion.opt_c += `<br/>${nodeHtml}`;
+                        else if (currentQuestion.opt_b) currentQuestion.opt_b += `<br/>${nodeHtml}`;
+                        else if (currentQuestion.opt_a) currentQuestion.opt_a += `<br/>${nodeHtml}`;
+                    } else {
+                        currentQuestion.content += (currentQuestion.content ? `<br/>` : '') + nodeHtml;
+                    }
+                }
+            }
+        }
+    }
+    
+    pushCurrentQuestion();
+    return questions;
+};
 
 const SmartUpload = () => {
   const navigate = useNavigate();
@@ -201,10 +417,10 @@ const SmartUpload = () => {
       });
    } else {
       // =======================================================
-      // XỬ LÝ FILE WORD CẮT LÁT TUYỆT ĐỐI VÀ CHỐNG TRƯỢT CÂU
+      // 🚀 CỖ MÁY TRẠNG THÁI XỬ LÝ FILE WORD (STATE MACHINE)
       // =======================================================
 
-      // 1. TRẢM LỜI GIẢI PHÍA SAU
+      // 1. TRẢM LỜI GIẢI PHÍA SAU (Giữ nguyên - Rất tốt)
       const solutionRegex = /\n\s*(?:HƯỚNG DẪN GIẢI|HƯỚNG DẪN CHI TIẾT|LỜI GIẢI CHI TIẾT|ĐÁP ÁN VÀ LỜI GIẢI|BẢNG ĐÁP ÁN)/i;
       const solMatch = cleanText.match(solutionRegex);
       if (solMatch) {
@@ -213,91 +429,116 @@ const SmartUpload = () => {
 
       // 2. DỌN DẸP RÁC
       cleanText = cleanText.replace(/Mỗi câu hỏi thí sinh chỉ chọn một phương án\.?/gi, '');
+      cleanText = cleanText.replace(/\[Mức độ\s*\d+\]/gi, ''); // Xóa nhãn mức độ cho sạch
 
-      // 🔥 FIX LỖI OFFSET: Hợp nhất [Mức độ] và Câu X nếu chúng đứng cạnh nhau 🔥
-      // Nếu [Mức độ X] đứng ngay trước Câu X, xóa cái Mức độ đi để không bị cắt làm đôi
-      let pText = cleanText.replace(/\[Mức độ\s*\d+\]\s*(?=(Câu|Bài|Question)\s*\d+[\.\:])/gi, '');
-      // Hoặc nếu Câu X đứng trước [Mức độ X], cũng hợp nhất lại
-      pText = pText.replace(/(Câu|Bài|Question)\s*\d+[\.\:]\s*(?=\[Mức độ\s*\d+\])/gi, '$1 ');
-
-      // 3. TẠO DẢI PHÂN CÁCH BỀN VỮNG
-      pText = pText.replace(/(PHẦN\s*(?:I{1,3}|[1-3]))/gi, '|||SEC$1');
-      pText = pText.replace(/(Câu\s*\d+[\.\:]|Bài\s*\d+[\.\:]|Question\s*\d+[\.\:]|\[Mức độ\s*\d+\])/gi, '|||Q$1');
-
-      const blocks = pText.split('|||');
-      let currentSection = 'multiple_choice';
+      // 3. THUẬT TOÁN ĐỌC TỪNG DÒNG (DÒNG NÀO RA DÒNG ĐÓ)
+      const lines = cleanText.split('\n');
+      
+      let currentState = 'IDLE'; 
+      let currentQuestion = null; 
+      let currentSectionType = 'multiple_choice'; 
       let qCount = 1;
 
-      blocks.forEach(block => {
-        const txt = block.trim();
-        if (!txt) return;
+      // Mỏ neo Regex siêu mạnh
+      const regexSection = /^(?:PHẦN\s*(?:I{1,3}|[1-3]))\s*[\:\.]?\s*(.*)/i;
+      const regexQuestion = /^(?:Câu|Bài|Question)\s*(\d+)[\.\:\-]?\s*(.*)/i;
+      const regexOption = /^(A|B|C|D)[\.\:\)]\s*(.*)/i;
 
-        // KIỂM TRA CHUYỂN PHẦN
-        if (txt.startsWith('SEC')) {
-          const secText = txt.replace(/^SEC/i, '').trim();
-          if (/(đúng|sai|đúng\/sai)/i.test(secText)) currentSection = 'true_false';
-          else if (/(ngắn|điền|tự luận)/i.test(secText)) currentSection = 'fill_blank';
-          else currentSection = 'multiple_choice';
-          return;
+      // Hàm đóng gói câu hỏi để lưu vào mảng
+      const pushCurrentQuestion = () => {
+        if (currentQuestion) {
+          // Tự động nhận diện Tự luận nếu thiếu đáp án A, B
+          if (!currentQuestion.opt_a && !currentQuestion.opt_b && currentSectionType === 'multiple_choice') {
+            currentQuestion.type = 'fill_blank';
+            currentQuestion.correct_opt = '';
+          }
+          questions.push(currentQuestion);
+          currentQuestion = null;
+        }
+      };
+
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        if (!line) continue;
+
+        // A. CHUYỂN PHẦN (SECTION)
+        const secMatch = line.match(regexSection);
+        if (secMatch) {
+          pushCurrentQuestion(); 
+          const secText = secMatch[1] || '';
+          if (/(đúng|sai|đúng\/sai)/i.test(secText)) currentSectionType = 'true_false';
+          else if (/(ngắn|điền|tự luận)/i.test(secText)) currentSectionType = 'fill_blank';
+          else currentSectionType = 'multiple_choice';
+          currentState = 'IDLE';
+          continue;
         }
 
-        // KIỂM TRA VÀ XỬ LÝ CÂU HỎI
-        if (txt.startsWith('Q')) {
-          let content = txt.replace(/^Q/i, '').trim();
+        // B. BẮT ĐẦU CÂU HỎI MỚI
+        const qMatch = line.match(regexQuestion);
+        if (qMatch) {
+          pushCurrentQuestion(); 
+          currentQuestion = {
+            id: qCount++,
+            type: currentSectionType,
+            content: qMatch[2].trim(),
+            opt_a: '', opt_b: '', opt_c: '', opt_d: '',
+            correct_opt: currentSectionType === 'true_false' ? 'F,F,F,F' : (currentSectionType === 'fill_blank' ? '' : 'A'),
+            image_file: null, image_preview: null,
+            isEditing: false
+          };
+          currentState = 'READING_QUESTION';
+          continue;
+        }
+
+        // C. XỬ LÝ ĐÁP ÁN & NỐI DÒNG DỮ LIỆU
+        if (currentQuestion) {
+          const optMatch = line.match(regexOption);
           
-          // Gỡ bỏ các nhãn thừa ở đầu đề bài
-          content = content.replace(/^(Câu|Bài|Question)\s*\d+[\.\:]/i, '').trim();
-          content = content.replace(/^\[Mức độ\s*\d+\]/i, '').trim();
-
-          // TÌM TỌA ĐỘ A. B. C. D.
-          const aMatch = content.match(/(?:\s|^)A\s*[\.\)\/]/);
-          const bMatch = content.match(/(?:\s|^)B\s*[\.\)\/]/);
-          const cMatch = content.match(/(?:\s|^)C\s*[\.\)\/]/);
-          const dMatch = content.match(/(?:\s|^)D\s*[\.\)\/]/);
-
-          // CẮT LÁT NẾU ĐỦ 4 ĐÁP ÁN
-          if (aMatch && bMatch && cMatch && dMatch && 
-              aMatch.index < bMatch.index && 
-              bMatch.index < cMatch.index && 
-              cMatch.index < dMatch.index) {
-              
-              const mainContent = content.substring(0, aMatch.index).trim();
-              const optA = content.substring(aMatch.index + aMatch[0].length, bMatch.index).trim();
-              const optB = content.substring(bMatch.index + bMatch[0].length, cMatch.index).trim();
-              const optC = content.substring(cMatch.index + cMatch[0].length, dMatch.index).trim();
-              const optD = content.substring(dMatch.index + dMatch[0].length).trim();
-
-              questions.push({
-                  id: qCount++,
-                  type: currentSection === 'true_false' ? 'true_false' : 'multiple_choice',
-                  content: mainContent,
-                  opt_a: optA, opt_b: optB, opt_c: optC, opt_d: optD,
-                  correct_opt: currentSection === 'true_false' ? 'F,F,F,F' : 'A',
-                  image_file: null, image_preview: null,
-                  isEditing: false // Thuộc tính để bật tắt Trình soạn thảo mình vừa làm
+          if (optMatch && currentSectionType !== 'fill_blank') {
+            // Trúng 1 đáp án ở đầu dòng
+            const letter = optMatch[1].toLowerCase(); 
+            currentQuestion[`opt_${letter}`] = optMatch[2].trim();
+            currentState = `READING_OPTION_${letter.toUpperCase()}`; 
+            
+            // QUAN TRỌNG: Cắt đáp án hàng ngang (A. 1 B. 2 C. 3 D. 4)
+            let remainingLine = optMatch[2].trim();
+            const otherOptsMatch = remainingLine.match(/(?:\s+)(B|C|D)[\.\:\)]\s*(.*)/i);
+            
+            if (otherOptsMatch) {
+              const allOpts = line.split(/(?=(?:^|\s+)(?:A|B|C|D)[\.\:\)]\s*)/i);
+              allOpts.forEach(optBlock => {
+                const blockMatch = optBlock.trim().match(regexOption);
+                if (blockMatch) {
+                  const blkLetter = blockMatch[1].toLowerCase();
+                  currentQuestion[`opt_${blkLetter}`] = blockMatch[2].trim();
+                }
               });
-          } else {
-              // NẾU MẤT ĐÁP ÁN -> Điền khuyết
-              questions.push({
-                  id: qCount++,
-                  type: 'fill_blank', 
-                  content: content,
-                  opt_a: '', opt_b: '', opt_c: '', opt_d: '',
-                  correct_opt: '', image_file: null, image_preview: null,
-                  isEditing: false
-              });
+              // Nếu dòng này chứa nhiều đáp án, coi như đã đọc xong khối đáp án đó
+              currentState = 'IDLE'; 
+            }
+          } 
+          else {
+            // KHÔNG TRÚNG REGEX NÀO -> NỐI VÀO PHẦN ĐANG ĐỌC (Nối đoạn văn dài)
+            if (currentState === 'READING_QUESTION') {
+              currentQuestion.content += '\n' + line; 
+            } else if (currentState.startsWith('READING_OPTION_')) {
+              const letter = currentState.split('_')[2].toLowerCase();
+              currentQuestion[`opt_${letter}`] += '\n' + line;
+            }
           }
         }
-      });
+      }
+      
+      // Đừng quên lưu câu hỏi cuối cùng của bài thi!
+      pushCurrentQuestion();
     }
+
     return questions;
   };
-
-
   
 
   /// ================= BỘ XỬ LÝ FILE MỚI (CHỈ DÙNG REGEX) =================
-  const processFile = async (selectedFile, ext) => {
+ const processFile = async (selectedFile, ext) => {
     setIsExtracting(true);
     setParsedQuestions([]);
     
@@ -307,25 +548,40 @@ const SmartUpload = () => {
       return;
     }
 
-    // NẾU LÀ WORD HOẶC TEX -> Chạy Regex
     try {
-      let rawText = '';
-      if (ext === 'tex' || ext === 'txt') {
-        rawText = await selectedFile.text();
-      } else if (ext === 'docx') {
+      if (ext === 'docx') {
         const arrayBuffer = await selectedFile.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        rawText = result.value;
-      }
+        
+        // 1. Chuyển Word sang HTML, GIỮ LẠI HÌNH ẢNH (Biến thành Base64)
+        const result = await mammoth.convertToHtml({ arrayBuffer }, {
+            convertImage: mammoth.images.imgElement(function(image) {
+                return image.read("base64").then(function(imageBuffer) {
+                    return { src: "data:" + image.contentType + ";base64," + imageBuffer };
+                });
+            })
+        });
+        
+        const htmlContent = result.value;
+        
+        // 2. Gọi hàm Parser DOM HTML mới
+        const domQuestions = parseWordHTMLToQuestions(htmlContent); 
+        
+        if (domQuestions.length > 0) {
+          setParsedQuestions(domQuestions);
+        } else {
+          alert("Hệ thống không tìm thấy cấu trúc câu hỏi Word. Vui lòng kiểm tra lại file!");
+        }
 
-      // Đẩy text vào hàm cắt lát tuyệt đối (parseExamTextWithRegex)
-      const regexResult = parseExamTextWithRegex(rawText);
-
-      // Trả kết quả ra màn hình cho giáo viên review/chỉnh sửa
-      if (regexResult.length > 0) {
-        setParsedQuestions(regexResult);
-      } else {
-        alert("Hệ thống không tìm thấy cấu trúc câu hỏi nào. Vui lòng tự thêm tay hoặc kiểm tra lại file!");
+      } else if (ext === 'tex' || ext === 'txt') {
+        // Xử lý file TEX bằng code regex cũ cực xịn của bạn
+        let rawText = await selectedFile.text();
+        const regexResult = parseExamTextWithRegex(rawText);
+        
+        if (regexResult.length > 0) {
+          setParsedQuestions(regexResult);
+        } else {
+          alert("Hệ thống không tìm thấy cấu trúc câu hỏi TEX nào!");
+        }
       }
     } catch (err) {
       alert("Lỗi đọc file: " + err.message);
@@ -728,10 +984,10 @@ const SmartUpload = () => {
                   </div>
                   
                   <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
-          {parsedQuestions.map((q, index) => (
+                    {parsedQuestions.map((q, index) => (
                     <div key={index} className="border p-4 bg-gray-50 rounded-xl relative shadow-sm">
                       
-                      {/* ========================================================= */}
+                     {/* ========================================================= */}
                       {/* TIÊU ĐỀ, NÚT SỬA LỖI VÀ CHỌN LOẠI CÂU HỎI                 */}
                       {/* ========================================================= */}
                       <div className="flex flex-col md:flex-row justify-between items-start mb-4 border-b border-gray-200 pb-4 gap-4">
@@ -740,12 +996,12 @@ const SmartUpload = () => {
                         <div className="flex-1 w-full">
                           <div className="font-bold text-gray-800 text-lg mb-2">Câu {q.id}:</div>
                           {q.isEditing ? (
-                            <textarea
-                              value={q.content}
-                              onChange={(e) => updateParsedQuestion(index, 'content', e.target.value)}
-                              className="w-full p-3 border-2 border-indigo-300 rounded-xl outline-none focus:ring-4 focus:ring-indigo-100 bg-indigo-50/30 min-h-[120px] transition-all"
-                              placeholder="Nhập nội dung câu hỏi (hỗ trợ code Toán $...$)..."
-                            />
+                            <div className="mb-2 bg-white rounded-lg">
+                              <BlockEditor
+                                initialContent={q.content}
+                                onChange={(content) => updateParsedQuestion(index, 'content', content)}
+                              />
+                            </div>
                           ) : (
                             <div className="content-preview text-gray-700 leading-relaxed font-medium">
                               <SafeLatex>{q.content}</SafeLatex>
@@ -754,7 +1010,7 @@ const SmartUpload = () => {
                         </div>
                         
                         {/* CÁC NÚT ĐIỀU KHIỂN BÊN PHẢI */}
-                        <div className="flex flex-col gap-2 shrink-0 w-full md:w-56">
+                        <div className="flex flex-col gap-2 shrink-0 w-full md:w-56 mt-4 md:mt-0">
                           {/* Nút bật tắt chế độ Edit */}
                           <button
                             onClick={() => toggleEditMode(index)}
@@ -788,11 +1044,11 @@ const SmartUpload = () => {
                       </div>
 
                       {/* ========================================================= */}
-                      {/* NÚT ĐÍNH KÈM ẢNH CHO TỪNG CÂU HỎI (GIỮ NGUYÊN CODE CỦA BẠN) */}
+                      {/* NÚT ĐÍNH KÈM ẢNH CHO TỪNG CÂU HỎI (GIỮ NGUYÊN)            */}
                       {/* ========================================================= */}
                       <div className="mb-4 bg-white border border-dashed p-3 rounded-lg">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-bold text-gray-500"><ImageIcon size={14} className="inline mr-1"/> Đính kèm ảnh thêm</span>
+                          <span className="text-xs font-bold text-gray-500">Đính kèm ảnh thêm (Nếu không dùng kéo thả)</span>
                           {q.image_preview && <button onClick={() => handleRemoveQuestionImage(index)} className="text-red-500 text-xs font-bold bg-red-50 px-2 py-1 rounded">Xóa ảnh</button>}
                         </div>
                         {!q.image_preview ? (
@@ -800,7 +1056,7 @@ const SmartUpload = () => {
                             Tải ảnh lên <input type="file" className="hidden" accept="image/*" onChange={e => handleQuestionImageUpload(index, e.target.files[0])}/>
                           </label>
                         ) : (
-                          <img src={q.image_preview} className="max-h-32 mx-auto rounded border shadow-sm" />
+                          <img src={q.image_preview} className="max-h-32 mx-auto rounded border shadow-sm" alt="Preview" />
                         )}
                       </div>
                       
@@ -815,14 +1071,13 @@ const SmartUpload = () => {
                               <div key={opt} className={`p-3 rounded-xl border ${q.isEditing ? 'bg-indigo-50 border-indigo-200' : 'bg-white shadow-sm'}`}>
                                 <div className="flex gap-3">
                                   <span className="font-bold text-indigo-700 mt-1">{opt.toUpperCase()}.</span>
-                                  {/* Bật ô nhập liệu nếu đang Edit */}
                                   {q.isEditing ? (
-                                    <textarea
-                                      value={q[`opt_${opt}`]}
-                                      onChange={(e) => updateParsedQuestion(index, `opt_${opt}`, e.target.value)}
-                                      className="w-full bg-white p-2.5 border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 min-h-[60px]"
-                                      placeholder={`Nhập đáp án ${opt.toUpperCase()}...`}
-                                    />
+                                    <div className="flex-1 w-full bg-white rounded-lg">
+                                      <BlockEditor
+                                        initialContent={q[`opt_${opt}`]}
+                                        onChange={(content) => updateParsedQuestion(index, `opt_${opt}`, content)}
+                                      />
+                                    </div>
                                   ) : (
                                     <div className="text-gray-700 flex-1"><SafeLatex>{q[`opt_${opt}`]}</SafeLatex></div>
                                   )}
@@ -848,14 +1103,13 @@ const SmartUpload = () => {
                             <div key={opt} className={`p-3 rounded-lg border shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${q.isEditing ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
                               <div className="flex-1 w-full flex gap-3 text-sm">
                                 <span className="font-bold text-blue-700 mt-1">{opt.toUpperCase()}.</span> 
-                                {/* Bật ô nhập liệu nếu đang Edit */}
                                 {q.isEditing ? (
-                                  <textarea
-                                    value={q[`opt_${opt}`]}
-                                    onChange={(e) => updateParsedQuestion(index, `opt_${opt}`, e.target.value)}
-                                    className="w-full bg-white p-2.5 border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 min-h-[60px]"
-                                    placeholder={`Nhập ý ${opt.toUpperCase()}...`}
-                                  />
+                                  <div className="flex-1 w-full bg-white rounded-lg">
+                                    <BlockEditor
+                                      initialContent={q[`opt_${opt}`]}
+                                      onChange={(content) => updateParsedQuestion(index, `opt_${opt}`, content)}
+                                    />
+                                  </div>
                                 ) : (
                                   <div className="pt-1"><SafeLatex>{q[`opt_${opt}`]}</SafeLatex></div>
                                 )}
