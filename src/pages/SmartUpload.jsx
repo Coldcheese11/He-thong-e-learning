@@ -5,6 +5,8 @@ import { supabase } from '../supabaseClient';
 import * as mammoth from 'mammoth';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
+import katex from 'katex';
+window.katex = katex;
 import BlockEditor from '../components/BlockEditor';
 // --- BỘ IMPORT MỚI ĐÃ SỬA LỖI VITE ---
 import CodeEditor from 'react-simple-code-editor';
