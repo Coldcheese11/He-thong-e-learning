@@ -30,9 +30,30 @@ class SafeLatex extends Component {
     return { hasError: true };
   }
 
-  renderMath(text) {
+renderMath(text) {
     let processText = text;
     if (typeof processText === 'string') {
+      // 1. DỊCH LỆNH LATEX ĐẶC THÙ VN
+      processText = processText.replace(/\\begin\{eqnarray\*\}?/g, '\\begin{aligned}').replace(/\\end\{eqnarray\*\}?/g, '\\end{aligned}');
+      processText = processText.replace(/\\begin\{eqnarray\}?/g, '\\begin{aligned}').replace(/\\end\{eqnarray\}?/g, '\\end{aligned}');
+      processText = processText.replace(/\\begin\{itemchoice\}?/g, '<div class="pl-4 mt-2">').replace(/\\end\{itemchoice\}?/g, '</div>');
+      processText = processText.replace(/\\begin\{itemize\}?/g, '<div class="pl-4 mt-2">').replace(/\\end\{itemize\}?/g, '</div>');
+      processText = processText.replace(/\\itemch/g, '<br/><span class="text-blue-500 font-bold">•</span> ');
+      processText = processText.replace(/\\item/g, '<br/><span class="text-blue-500 font-bold">•</span> ');
+
+      // 🔥 BÍ KÍP MỚI: TỰ ĐỘNG VÁ LỖI PHÂN SỐ BỊ RỤNG NGOẶC CỦA GIÁO VIÊN
+      const fixDfrac = (str) => {
+          // Vá lỗi 1: \dfrac{Tử Mẫu} -> \dfrac{Tử}{Mẫu}
+          let res = str.replace(/\\dfrac\s*\{((?:[^{}]|\{[^{}]*\})+?)\s+([^\s{}]+)\}/g, '\\dfrac{$1}{$2}');
+          // Vá lỗi 2: \dfrac Tử Mẫu (Rụng hết cả 2 ngoặc ngoài) -> \dfrac{Tử}{Mẫu}
+          res = res.replace(/\\dfrac\s+(\\[a-zA-Z]+\{[^{}]*\}|[a-zA-Z0-9\-\.\^]+)\s+([a-zA-Z0-9\-\.\^]+)/g, '\\dfrac{$1}{$2}');
+          return res;
+      };
+      
+      // Chạy qua 2 lần để vá luôn cả phân số lồng nhau
+      processText = fixDfrac(processText);
+      processText = fixDfrac(processText);
+
       // Ép các cú pháp \[ \] và \( \) về chuẩn $$ và $ của KaTeX
       processText = processText.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
       processText = processText.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
@@ -40,35 +61,28 @@ class SafeLatex extends Component {
       return processText;
     }
 
-    // Thuật toán tách các khối Toán học và Văn bản thường
     const parts = processText.split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
     
     return parts.map((part, index) => {
       try {
         if (part.startsWith('$$') && part.endsWith('$$')) {
-          // Toán hiển thị giữa dòng (Display Mode)
           const math = part.slice(2, -2);
           const html = katex.renderToString(math, { 
-            displayMode: true, 
-            throwOnError: false, // BÍ KÍP: CÓ LỖI CŨNG KHÔNG BAO GIỜ SẬP WEB
+            displayMode: true, throwOnError: false, 
             macros: {"\\heva": "\\begin{cases} #1 \\end{cases}", "\\hoac": "\\left[\\begin{matrix} #1 \\end{matrix}\\right."} 
           });
           return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
         } else if (part.startsWith('$') && part.endsWith('$')) {
-          // Toán hiển thị cùng dòng (Inline Mode)
           const math = part.slice(1, -1);
           const html = katex.renderToString(math, { 
-            displayMode: false, 
-            throwOnError: false, 
+            displayMode: false, throwOnError: false, 
             macros: {"\\heva": "\\begin{cases} #1 \\end{cases}", "\\hoac": "\\left[\\begin{matrix} #1 \\end{matrix}\\right."} 
           });
           return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
         } else {
-          // Văn bản thông thường (Giữ nguyên các thẻ HTML)
           return <span key={index} dangerouslySetInnerHTML={{ __html: part }} />;
         }
       } catch (e) {
-        // Nếu có lỗi parse dị biệt, bôi đỏ đoạn lỗi chứ không làm sập toàn bộ trang
         return <span key={index} className="text-red-500 font-bold bg-red-50 px-1 rounded">{part}</span>;
       }
     });
@@ -309,6 +323,8 @@ const SmartUpload = () => {
   // --- STATE CHO CHẾ ĐỘ SPLIT VIEW (TEX) ---
   const [rawTexCode, setRawTexCode] = useState(''); // Lưu code TeX thô để edit
   const [isScanningTikz, setIsScanningTikz] = useState(false); // Trạng thái chờ quét ảnh TikZ
+  const [activeLine, setActiveLine] = useState(null); // BIẾN MỚI: LƯU DÒNG ĐANG ĐƯỢC CHỌN ĐỂ HIỆN MŨI TÊN
+  const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
   const lineNumbersRef = useRef(null); // <-- THÊM DÒNG NÀY ĐỂ LÀM SỐ DÒNG AZOTA
   // --- STATE CHO CHIA ĐIỂM NHANH ---
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
@@ -343,24 +359,66 @@ const SmartUpload = () => {
     alert('✅ Đã chia điểm thành công!');
   };
 
-  // Hàm xử lý Quét ảnh Tikcode
-  const handleScanTikzImages = async () => {
+// =====================================================================
+  // HÀM QUÉT ẢNH TIKZ (GHÉP CHÍNH XÁC VÀO CÂU HỎI MÀ KHÔNG CẦN TÌM CHỮ)
+  // =====================================================================
+  const handleScanTikzImages = async (autoCode = null, currentQs = null) => {
     setIsScanningTikz(true);
-    
-    // Giả lập thời gian hệ thống đọc code và gửi lên Server tạo ảnh
-    setTimeout(() => {
-      // Logic sau này: Gọi API -> Nhận Link ảnh -> Tìm ID câu hỏi -> Gán vào q.image_preview
-      setIsScanningTikz(false);
-      alert('✅ Đã quét xong! (Tính năng này cần kết nối API Backend biên dịch ảnh ở phase sau)');
-    }, 3500); // Đợi 3.5s giả lập
+    let questionsToUpdate = currentQs ? [...currentQs] : [...parsedQuestions];
+
+    // 1. Gom tất cả các câu hỏi có chứa code TikZ đã được bóc tách ở Bước 2
+    let tasks = [];
+    questionsToUpdate.forEach((q, idx) => {
+        if (q.tikz_codes && q.tikz_codes.length > 0) {
+            tasks.push({ qIndex: idx, code: q.tikz_codes[0] }); // Lấy khối code đầu tiên
+        }
+    });
+
+    if (tasks.length === 0) {
+        if (!autoCode) alert('⚠️ Không tìm thấy hình vẽ TikZ nào cần quét!');
+        setIsScanningTikz(false);
+        return;
+    }
+
+    setScanProgress({ current: 0, total: tasks.length });
+    let successCount = 0;
+
+    // 2. Gửi từng code lên Server Render và gắn thẳng vào đúng Index câu hỏi đó
+    for (let i = 0; i < tasks.length; i++) {
+        const { qIndex, code } = tasks[i];
+        setScanProgress({ current: i + 1, total: tasks.length });
+
+        try {
+            const response = await fetch('https://tikz-engine-api.onrender.com/render', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tikz_codes: [code] })
+            });
+
+            if (response.ok) {
+                const { images } = await response.json();
+                if (images[0] && images[0] !== "ERROR") {
+                    questionsToUpdate[qIndex].image_preview = images[0];
+                    successCount++;
+                    setParsedQuestions([...questionsToUpdate]); // Cập nhật ngay lên UI
+                }
+            }
+        } catch (error) {
+            console.error(`Lỗi render câu ${qIndex + 1}:`, error);
+        }
+    }
+
+    if (!autoCode) alert(`✅ Đã quét và tự động gắn ${successCount}/${tasks.length} hình TikZ cực chuẩn!`);
+    setIsScanningTikz(false);
+    setScanProgress({ current: 0, total: 0 });
   };
 
   // Hàm tự động parse lại câu hỏi khi Giáo viên gõ vào khung Code
   const handleTexCodeChange = (newCode) => {
     setRawTexCode(newCode);
     // Tính năng xịn: Debounce hoặc Parse lại ngay lập tức
-    // const regexResult = parseExamTextWithRegex(newCode);
-    // setParsedQuestions(regexResult);
+     const regexResult = parseExamTextWithRegex(newCode);
+     setParsedQuestions(regexResult);
   };
 
   // STATES
@@ -447,8 +505,7 @@ const SmartUpload = () => {
     // =======================================================
     // 1. DỌN DẸP RÁC VÀ BẢO TỒN CẤU TRÚC
     // =======================================================
-    let cleanText = rawText.replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '\n[⚠️ HÌNH VẼ TIKZ - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
-                           .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '\n[⚠️ BẢNG BIỂU - VUI LÒNG CHỤP ẢNH ĐÍNH KÈM]\n')
+    let cleanText = rawText.replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '')
                            .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, '$1')
                            .replace(/\\heva\s*\{([\s\S]*?)\}/g, '\\begin{cases} $1 \\end{cases}')
                            .replace(/\\hoac\s*\{([\s\S]*?)\}/g, '\\left[\\begin{matrix} $1 \\end{matrix}\\right.')
@@ -467,10 +524,37 @@ const SmartUpload = () => {
         let content = block.replace(/\\begin\{ex\}(\s*%\[.*?\])*/, '').replace(/\\end\{ex\}/, '');
         let options = ['', '', '', ''], correctOpt = '', questionType = 'fill_blank';
         
-        // CHẶT BỎ LỜI GIẢI NGAY LẬP TỨC
-        const loigiaiIdx = content.search(/\\loigiai/);
-        if (loigiaiIdx !== -1) content = content.substring(0, loigiaiIdx);
+        // 🔥 BÓC TÁCH LỜI GIẢI THAY VÌ XÓA BỎ 🔥
+        let explanation = '';
 
+        // 🔥 BÍ KÍP MỚI: BÓC TÁCH CODE TIKZ TRỰC TIẾP & XÓA BỎ DẤU VẾT 🔥
+        let tikzCodes = [];
+        const extractTikz = (textStr) => {
+            const regex = /\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g;
+            const matches = textStr.match(regex);
+            if (matches) tikzCodes.push(...matches);
+            return textStr.replace(regex, '').trim(); // Xóa sạch chữ, không để lại cảnh báo nào
+        };
+        
+        // Trường hợp 1: Dùng \begin{loigiai}...\end{loigiai}
+        const beginLgMatch = content.match(/\\begin\{loigiai\}([\s\S]*?)\\end\{loigiai\}/);
+        if (beginLgMatch) {
+            explanation = beginLgMatch[1].trim();
+            content = content.replace(beginLgMatch[0], '');
+        } else {
+            // Trường hợp 2: Dùng \loigiai{...}
+            const loigiaiMatch = content.match(/\\loigiai\s*\{/);
+            if (loigiaiMatch) {
+                const loigiaiStartIdx = loigiaiMatch.index + loigiaiMatch[0].length - 1; // Trỏ tới dấu '{'
+                const extractedLg = extractBraces(content, loigiaiStartIdx, 1); // Dùng hàm đếm ngoặc siêu xịn
+                if (extractedLg.results.length > 0) {
+                    explanation = extractedLg.results[0];
+                    content = content.substring(0, loigiaiMatch.index) + content.substring(extractedLg.endIndex);
+                } else {
+                    content = content.substring(0, loigiaiMatch.index);
+                }
+            }
+        }
         // TÌM LỆNH \choice 
         const choiceMatchIdx = content.search(/\\(?:choice|choiceTF|motcot|haicot|boncot)/);
         
@@ -518,15 +602,21 @@ const SmartUpload = () => {
 
         
 
-        // TÍNH TOÁN SỐ DÒNG CỦA CÂU HỎI TRONG ĐOẠN CODE GỐC
-        const blockStartIdx = rawText.indexOf(block);
-        const lineIdx = rawText.substring(0, blockStartIdx).split('\n').length - 1;
+       // TÍNH TOÁN SỐ DÒNG CỦA CÂU HỎI TRONG ĐOẠN CODE GỐC (ĐÃ FIX LỖI NHẢY VỀ ĐẦU TRANG)
+        let searchIdx = -1;
+        // Đi tìm chữ \begin{ex} thứ n tương ứng với câu hỏi hiện tại trong file gốc
+        for (let k = 0; k <= index; k++) {
+             searchIdx = rawText.indexOf('\\begin{ex}', searchIdx + 1);
+        }
+        const lineIdx = searchIdx !== -1 ? rawText.substring(0, searchIdx).split('\n').length - 1 : 0;
 
         questions.push({ 
           id: index + 1, type: questionType, content: content, 
           opt_a: options[0], opt_b: options[1], opt_c: options[2], opt_d: options[3], 
           correct_opt: correctOpt, image_file: null, image_preview: null,
-          lineIndex: lineIdx // <-- LƯU SỐ DÒNG VÀO ĐÂY
+          lineIndex: lineIdx, // <-- LƯU SỐ DÒNG VÀO ĐÂY
+          explanation: explanation,
+          tikz_codes: tikzCodes
         });
       });
    } else {
@@ -547,11 +637,13 @@ const SmartUpload = () => {
 
       // 3. THUẬT TOÁN ĐỌC TỪNG DÒNG (DÒNG NÀO RA DÒNG ĐÓ)
       const lines = cleanText.split('\n');
-      
+      const rawLinesForSearch = rawText.split('\n'); 
+
       let currentState = 'IDLE'; 
       let currentQuestion = null; 
       let currentSectionType = 'multiple_choice'; 
       let qCount = 1;
+      let lastSearchIdx = 0; // 🔥 BÍ KÍP: Nhớ vị trí đã tìm để không bị nhảy lung tung
 
       // Mỏ neo Regex siêu mạnh
       const regexSection = /^(?:PHẦN\s*(?:I{1,3}|[1-3]))\s*[\:\.]?\s*(.*)/i;
@@ -587,10 +679,26 @@ const SmartUpload = () => {
           continue;
         }
 
-        // B. BẮT ĐẦU CÂU HỎI MỚI
+       // B. BẮT ĐẦU CÂU HỎI MỚI
         const qMatch = line.match(regexQuestion);
         if (qMatch) {
           pushCurrentQuestion(); 
+
+          // 🔥 BÍ KÍP TỐI THƯỢNG: QUÉT DÒNG TRỰC TIẾP TỪ RAW CODE BẰNG REGEX 🔥
+          const qNum = qMatch[1]; // Lấy đúng cái số thứ tự câu (vd: 1, 2, 3)
+          let realLineIdx = i; // Mặc định
+          
+          // Chấp nhận mọi rác như \textbf, \textit, khoảng trắng trước số câu
+          const searchRegex = new RegExp(`(?:Câu|Bài|Question)[^0-9]*${qNum}\\b`, 'i');
+          
+          for (let r = lastRawLineIdx; r < rawLinesForSearch.length; r++) {
+              if (searchRegex.test(rawLinesForSearch[r])) {
+                  realLineIdx = r;
+                  lastRawLineIdx = r; // Cập nhật vị trí để dò câu tiếp theo nhanh hơn
+                  break;
+              }
+          }
+
           currentQuestion = {
             id: qCount++,
             type: currentSectionType,
@@ -599,11 +707,12 @@ const SmartUpload = () => {
             correct_opt: currentSectionType === 'true_false' ? 'F,F,F,F' : (currentSectionType === 'fill_blank' ? '' : 'A'),
             image_file: null, image_preview: null,
             isEditing: false,
-            lineIndex: i
+            lineIndex: realLineIdx // <-- ĐÃ SỬA THÀNH SỐ DÒNG CHUẨN XÁC 100%
           };
           currentState = 'READING_QUESTION';
           continue;
         }
+
 
         // C. XỬ LÝ ĐÁP ÁN & NỐI DÒNG DỮ LIỆU
         if (currentQuestion) {
@@ -648,6 +757,51 @@ const SmartUpload = () => {
       pushCurrentQuestion();
     }
 
+
+    // =======================================================
+    // BƯỚC CUỐI CÙNG: LƯỚI QUÉT TIKZ TOÀN CẦU VÀ DỌN RÁC NGOẶC
+    // =======================================================
+    questions.forEach(q => {
+        let extractedTikz = [];
+        
+        const extractT = (textStr) => {
+            if (!textStr) return '';
+            // 🔥 CẢI TIẾN: Chấp nhận cả trường hợp rụng mất dấu } ở chữ tikzpicture cuối
+            const regex = /\\begin\s*\{tikzpicture\}[\s\S]*?(?:\\end\s*\{tikzpicture\}|\\end\s*\{tikzpicture)/g;
+            const matches = textStr.match(regex);
+            
+            if (matches) {
+                // Tự động vá lại dấu } nếu bị thiếu để Server Render không bị sập
+                const fixedMatches = matches.map(m => m.trim().endsWith('}') ? m : m + '}');
+                extractedTikz.push(...fixedMatches);
+            }
+            return textStr.replace(regex, '').trim(); 
+        };
+        
+        // Hút TikZ từ mọi ngóc ngách của câu hỏi
+        q.content = extractT(q.content);
+        q.explanation = extractT(q.explanation);
+        ['opt_a', 'opt_b', 'opt_c', 'opt_d'].forEach(opt => {
+            q[opt] = extractT(q[opt]);
+        });
+        
+        // Lưu code TikZ vào câu hỏi
+        q.tikz_codes = [...(q.tikz_codes || []), ...extractedTikz];
+        
+        // DỌN SẠCH CÁC NGOẶC RÁC CỦA LỆNH \immini DƯ THỪA
+        const cleanBraces = (str) => {
+            if (!str) return str;
+            return str.replace(/\}\s*\{/g, '\n') // Xóa }{ ở giữa
+                      .replace(/^[\s\{]+/, '')   // Xóa ngoặc { ở đầu
+                      .replace(/[\s\}]+$/, '')   // Xóa ngoặc } ở cuối
+                      .replace(/\\immini/g, '')  // Gỡ nốt chữ immini nếu còn sót
+                      .trim();
+        };
+        
+        q.content = cleanBraces(q.content);
+        q.explanation = cleanBraces(q.explanation);
+    });
+
     return questions;
   };
   
@@ -687,14 +841,19 @@ const SmartUpload = () => {
           alert("Hệ thống không tìm thấy cấu trúc câu hỏi Word. Vui lòng kiểm tra lại file!");
         }
 
-      } else if (ext === 'tex' || ext === 'txt') {
-        // Xử lý file TEX bằng code regex cũ cực xịn của bạn
+     } else if (ext === 'tex' || ext === 'txt') {
         let rawText = await selectedFile.text();
-        setRawTexCode(rawText)
+        setRawTexCode(rawText); 
         const regexResult = parseExamTextWithRegex(rawText);
         
         if (regexResult.length > 0) {
-          setParsedQuestions(regexResult);
+          setParsedQuestions(regexResult); 
+          
+          // 🔥 BÍ KÍP MỚI: Truyền trực tiếp mảng câu hỏi vừa cắt được vào hàm quét
+          if (rawText.includes('\\begin{tikzpicture}')) {
+             handleScanTikzImages(rawText, regexResult); 
+          }
+          
         } else {
           alert("Hệ thống không tìm thấy cấu trúc câu hỏi TEX nào!");
         }
@@ -831,6 +990,7 @@ const SmartUpload = () => {
             opt_c: q.opt_c, 
             opt_d: q.opt_d,
             correct_opt: q.correct_opt, 
+            explanation: q.explanation,
             level: 'Trung bình', 
             subject_id: selectedSubject,
             image_url: imageUrl,
@@ -923,8 +1083,15 @@ const SmartUpload = () => {
                   <span className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-xs">{parsedQuestions.length} câu</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={handleScanTikzImages} disabled={isScanningTikz} className="bg-white hover:bg-purple-50 text-purple-700 font-bold py-1.5 px-4 rounded-lg flex items-center gap-2 transition-all text-sm border border-purple-200 shadow-sm">
-                    {isScanningTikz ? <><div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div> Đang vẽ ảnh...</> : <><Sparkles size={16}/> Quét ảnh TikZ</>}
+                  <button onClick={() => handleScanTikzImages()} disabled={isScanningTikz} className="bg-white hover:bg-purple-50 text-purple-700 font-bold py-1.5 px-4 rounded-lg flex items-center gap-2 transition-all text-sm border border-purple-200 shadow-sm">
+                    {isScanningTikz ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div> 
+                        Đang chuyển ảnh {scanProgress.current}/{scanProgress.total}
+                      </>
+                    ) : (
+                      <><Sparkles size={16}/> Quét ảnh TikZ</>
+                    )}
                   </button>
                   <button onClick={() => setIsScoreModalOpen(true)} className="bg-[#144f5d] hover:bg-[#0f3d48] text-white font-bold py-1.5 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-all text-sm border border-transparent">
                     <Zap size={16}/> Chia điểm
@@ -936,34 +1103,67 @@ const SmartUpload = () => {
                 {parsedQuestions.map((q, index) => (
                   <div 
                       key={index} 
-                      onClick={() => {
+                     onClick={() => {
                         // TỰ ĐỘNG CUỘN BẢNG CODE BÊN PHẢI TỚI ĐÚNG DÒNG
-                        if (fileType === 'tex' && q.lineIndex !== undefined) {
+                        if (q.lineIndex !== undefined) {
+                          setActiveLine(q.lineIndex); // Bật mũi tên chỉ đường ở cột đánh số
+                          const lineHeight = 20.8; // Chiều cao 1 dòng
+                          const targetScroll = Math.max(0, (q.lineIndex * lineHeight) - 40); // Trừ hao 40px cho dễ nhìn
+                          
+                          // 1. Ép cuộn khung bao bên ngoài (Phòng trường hợp thanh cuộn nằm ở Div)
+                          const outerContainer = document.querySelector('.custom-scrollbar.relative');
+                          if (outerContainer) outerContainer.scrollTop = targetScroll;
+                          
+                          // 2. Ép cuộn trực tiếp khung gõ Code (Theo đúng code gốc của bạn)
                           const editorElement = document.querySelector('.react-simple-code-editor__textarea');
-                          if (editorElement) {
-                            const lineHeight = 20.8; // Chiều cao ước tính 1 dòng
-                            editorElement.scrollTop = q.lineIndex * lineHeight;
-                            if (lineNumbersRef.current) {
-                              lineNumbersRef.current.scrollTop = q.lineIndex * lineHeight;
-                            }
+                          if (editorElement) editorElement.scrollTop = targetScroll;
+                          
+                          // 3. Ép cuộn luôn cột đánh số dòng bên trái cho đồng bộ
+                          if (lineNumbersRef.current) {
+                            lineNumbersRef.current.scrollTop = targetScroll;
                           }
                         }
                       }}
-                      className="border border-gray-200 p-4 bg-white rounded-xl relative shadow-sm hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group"
+                      className="border border-gray-200 p-4 bg-white rounded-xl relative shadow-sm hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group flex flex-col gap-4"
                     >
-                    {/* Tiêu đề & Chọn loại */}
-                    <div className="flex flex-col md:flex-row justify-between items-start mb-4 border-b border-gray-100 pb-4 gap-4">
+                    
+                    {/* ======================================================== */}
+                    {/* TẦNG 1: ĐỀ BÀI, HÌNH ẢNH & NÚT CÔNG CỤ */}
+                    {/* ======================================================== */}
+                    <div className="flex flex-col md:flex-row justify-between items-start border-b border-gray-100 pb-4 gap-4">
+                      
+                      {/* Nửa trái: Đề bài & Ảnh */}
                       <div className="flex-1 w-full">
                         <div className="font-bold text-gray-800 text-lg mb-2">Câu {q.id}:</div>
+                        
+                        {/* 1A. Chữ đề bài */}
                         {q.isEditing ? (
-                          <div className="mb-2 bg-white rounded-lg border shadow-inner">
+                          <div className="mb-3 bg-white rounded-lg border shadow-inner" onClick={e => e.stopPropagation()}>
                             <BlockEditor initialContent={q.content} onChange={(content) => updateParsedQuestion(index, 'content', content)} />
                           </div>
                         ) : (
-                          <div className="content-preview text-gray-800 leading-relaxed font-medium"><SafeLatex>{q.content}</SafeLatex></div>
+                          <div className="content-preview text-gray-800 leading-relaxed font-medium mb-3"><SafeLatex>{q.content}</SafeLatex></div>
                         )}
+
+                        {/* 1B. Khung Ảnh (TikZ hoặc tải tay) - Nằm ngay dưới chữ */}
+                        <div className="mb-2 bg-gray-50 border border-dashed border-gray-300 p-3 rounded-lg" onClick={e => e.stopPropagation()}>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-gray-500">🖼️ Đính kèm ảnh minh họa</span>
+                            {q.image_preview && <button onClick={() => handleRemoveQuestionImage(index)} className="text-red-500 hover:text-white text-xs font-bold bg-red-50 hover:bg-red-500 px-2 py-1 rounded transition-colors">Xóa ảnh</button>}
+                          </div>
+                          {!q.image_preview ? (
+                            <label className="flex justify-center p-2 bg-blue-50/50 text-blue-500 border border-blue-100 rounded cursor-pointer hover:bg-blue-50 font-semibold text-sm transition-colors">
+                              Tải ảnh lên (Hoặc đợi quét TikZ) 
+                              <input type="file" className="hidden" accept="image/*" onChange={e => handleQuestionImageUpload(index, e.target.files[0])}/>
+                            </label>
+                          ) : (
+                            <img src={q.image_preview} className="max-h-48 mx-auto rounded border border-gray-200 shadow-sm" alt="Preview" />
+                          )}
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-2 shrink-0 w-full md:w-48 mt-4 md:mt-0">
+
+                      {/* Nửa phải: Nút Lưu/Sửa & Chọn loại câu hỏi */}
+                      <div className="flex flex-col gap-2 shrink-0 w-full md:w-48 mt-4 md:mt-0" onClick={e => e.stopPropagation()}>
                         <button onClick={() => toggleEditMode(index)} className={`w-full py-2 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${q.isEditing ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'}`}>
                           {q.isEditing ? '💾 Lưu chỉnh sửa' : '✏️ Sửa lỗi'}
                         </button>
@@ -981,62 +1181,87 @@ const SmartUpload = () => {
                       </div>
                     </div>
 
-                    {/* Hiển thị đáp án */}
-                    {q.type === 'multiple_choice' ? (
-                      <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
-                          {['a', 'b', 'c', 'd'].map(opt => (
-                            <div key={opt} className={`p-3 rounded-xl border ${q.isEditing ? 'bg-indigo-50 border-indigo-200' : 'bg-white shadow-sm'}`}>
-                              <div className="flex gap-3">
-                                <span className="font-bold text-indigo-700 mt-1">{opt.toUpperCase()}.</span>
+                    {/* ======================================================== */}
+                    {/* TẦNG 2: CÁC ĐÁP ÁN A, B, C, D HOẶC ĐÚNG/SAI */}
+                    {/* ======================================================== */}
+                    <div className="w-full" onClick={e => e.stopPropagation()}>
+                      {q.type === 'multiple_choice' ? (
+                        <>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
+                            {['a', 'b', 'c', 'd'].map(opt => (
+                              <div key={opt} className={`p-3 rounded-xl border ${q.isEditing ? 'bg-indigo-50 border-indigo-200' : 'bg-white shadow-sm'}`}>
+                                <div className="flex gap-3">
+                                  <span className="font-bold text-indigo-700 mt-1">{opt.toUpperCase()}.</span>
+                                  {q.isEditing ? (
+                                    <div className="flex-1 w-full bg-white rounded-lg">
+                                      <BlockEditor initialContent={q[`opt_${opt}`]} onChange={(content) => updateParsedQuestion(index, `opt_${opt}`, content)} />
+                                    </div>
+                                  ) : (<div className="text-gray-800 flex-1"><SafeLatex>{q[`opt_${opt}`]}</SafeLatex></div>)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                            <span className="text-xs font-bold text-gray-500">ĐÁP ÁN ĐÚNG:</span>
+                            <div className="flex gap-2">
+                              {['A', 'B', 'C', 'D'].map(opt => (
+                                <button key={opt} onClick={() => changeParsedCorrectOpt(index, opt)} className={`w-9 h-9 rounded-lg font-bold text-sm transition-transform ${q.correct_opt === opt ? 'bg-green-500 text-white scale-110 shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{opt}</button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      ) : q.type === 'true_false' ? (
+                        <div className="grid grid-cols-1 gap-2 mb-3">
+                          {['a', 'b', 'c', 'd'].map((opt, i) => (
+                            <div key={opt} className={`p-3 rounded-lg border shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${q.isEditing ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
+                              <div className="flex-1 w-full flex gap-3 text-sm">
+                                <span className="font-bold text-blue-700 mt-1">{opt.toUpperCase()}.</span> 
                                 {q.isEditing ? (
                                   <div className="flex-1 w-full bg-white rounded-lg">
                                     <BlockEditor initialContent={q[`opt_${opt}`]} onChange={(content) => updateParsedQuestion(index, `opt_${opt}`, content)} />
                                   </div>
-                                ) : (<div className="text-gray-800 flex-1"><SafeLatex>{q[`opt_${opt}`]}</SafeLatex></div>)}
+                                ) : (<div className="pt-1"><SafeLatex>{q[`opt_${opt}`]}</SafeLatex></div>)}
+                              </div>
+                              <div className="flex gap-1 shrink-0 mt-2 sm:mt-0">
+                                {['T', 'F'].map(val => (
+                                  <button key={val} onClick={() => {
+                                    const currentArr = (q.correct_opt || "?,?,?,?").split(','); currentArr[i] = val; changeParsedCorrectOpt(index, currentArr.join(','));
+                                  }} className={`px-4 py-2 rounded font-bold text-xs transition-colors ${q.correct_opt?.split(',')[i] === val ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                                    {val === 'T' ? 'Đúng' : 'Sai'}
+                                  </button>
+                                ))}
                               </div>
                             </div>
                           ))}
                         </div>
-                        <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                          <span className="text-xs font-bold text-gray-500">ĐÁP ÁN ĐÚNG:</span>
-                          <div className="flex gap-2">
-                            {['A', 'B', 'C', 'D'].map(opt => (
-                              <button key={opt} onClick={() => changeParsedCorrectOpt(index, opt)} className={`w-9 h-9 rounded-lg font-bold text-sm transition-transform ${q.correct_opt === opt ? 'bg-green-500 text-white scale-110 shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{opt}</button>
-                            ))}
-                          </div>
+                      ) : (
+                        <div className="pt-2">
+                          <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Nhập đáp án (Tự luận / Điền khuyết):</label>
+                          <input type="text" value={q.correct_opt} onChange={(e) => changeParsedCorrectOpt(index, e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-100 font-bold text-purple-700 bg-purple-50" placeholder="Nhập đáp án đúng vào đây..." />
                         </div>
-                      </>
-                    ) : q.type === 'true_false' ? (
-                      <div className="grid grid-cols-1 gap-2 mb-3">
-                        {['a', 'b', 'c', 'd'].map((opt, i) => (
-                          <div key={opt} className={`p-3 rounded-lg border shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${q.isEditing ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
-                            <div className="flex-1 w-full flex gap-3 text-sm">
-                              <span className="font-bold text-blue-700 mt-1">{opt.toUpperCase()}.</span> 
-                              {q.isEditing ? (
-                                <div className="flex-1 w-full bg-white rounded-lg">
-                                  <BlockEditor initialContent={q[`opt_${opt}`]} onChange={(content) => updateParsedQuestion(index, `opt_${opt}`, content)} />
-                                </div>
-                              ) : (<div className="pt-1"><SafeLatex>{q[`opt_${opt}`]}</SafeLatex></div>)}
-                            </div>
-                            <div className="flex gap-1 shrink-0 mt-2 sm:mt-0">
-                              {['T', 'F'].map(val => (
-                                <button key={val} onClick={() => {
-                                  const currentArr = (q.correct_opt || "?,?,?,?").split(','); currentArr[i] = val; changeParsedCorrectOpt(index, currentArr.join(','));
-                                }} className={`px-4 py-2 rounded font-bold text-xs transition-colors ${q.correct_opt?.split(',')[i] === val ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                                  {val === 'T' ? 'Đúng' : 'Sai'}
-                                </button>
-                              ))}
-                            </div>
+                      )}
+                    </div>
+
+                    {/* ======================================================== */}
+                    {/* TẦNG 3: LỜI GIẢI LUÔN NẰM DƯỚI CÙNG (DƯỚI CẢ ĐÁP ÁN) */}
+                    {/* ======================================================== */}
+                    {(q.explanation || q.isEditing) && (
+                      <div className="w-full mt-2 p-4 bg-yellow-50/80 border-t-4 border-t-yellow-400 border border-yellow-200 rounded-b-xl shadow-sm" onClick={e => e.stopPropagation()}>
+                        <h4 className="text-xs font-bold text-yellow-800 mb-3 uppercase flex items-center gap-1.5">
+                          <BookOpen size={15} /> Hướng dẫn giải chi tiết (Chỉ Giáo Viên Thấy)
+                        </h4>
+                        {q.isEditing ? (
+                          <div className="bg-white rounded-lg border shadow-inner">
+                            <BlockEditor initialContent={q.explanation || ''} onChange={(content) => updateParsedQuestion(index, 'explanation', content)} />
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="pt-3 border-t border-gray-100">
-                        <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Nhập đáp án (Tự luận / Điền khuyết):</label>
-                        <input type="text" value={q.correct_opt} onChange={(e) => changeParsedCorrectOpt(index, e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-100 font-bold text-purple-700 bg-purple-50" placeholder="Nhập đáp án đúng vào đây..." />
+                        ) : (
+                          <div className="text-gray-700 text-sm leading-relaxed border-l-2 border-yellow-400 pl-3 italic">
+                            <SafeLatex>{q.explanation}</SafeLatex>
+                          </div>
+                        )}
                       </div>
                     )}
+
                   </div>
                 ))}
               </div>
@@ -1062,16 +1287,25 @@ const SmartUpload = () => {
              {/* KHU VỰC TEXTAREA CÓ SỐ DÒNG BÊN TRÁI */}
               <div className="flex flex-1 overflow-hidden bg-white relative">
                 
-                {/* Gutter chứa số dòng */}
+               {/* Gutter chứa số dòng (Đã thêm tính năng bôi đậm dòng đang chọn) */}
                 <div 
                   ref={lineNumbersRef}
-                  className="w-12 bg-gray-50 border-r border-gray-200 text-right pr-2 py-4 text-gray-400 font-mono text-[13px] leading-relaxed select-none overflow-hidden shrink-0"
+                  className="w-14 bg-gray-50 border-r border-gray-200 text-right pr-1 py-4 text-gray-400 font-mono text-[13px] leading-relaxed select-none overflow-hidden shrink-0"
                 >
-                  {rawTexCode.split('\n').map((_, i) => <div key={i}>{i+1}</div>)}
+                  {rawTexCode.split('\n').map((_, i) => (
+                    <div 
+                      key={i} 
+                      className={`flex items-center justify-end gap-1 ${activeLine === i ? 'text-white bg-blue-500 font-bold px-1 rounded-sm shadow-sm z-10 relative scale-110 -ml-1' : 'pr-1'}`}
+                    >
+                      {activeLine === i && <span className="text-[10px]">▶</span>}
+                      {i+1}
+                    </div>
+                  ))}
                 </div>
 
                 {/* KHUNG EDITOR MỚI CÓ ĐÁNH MÀU CHỮ */}
                 <div 
+                  id="editor-scroll-container"
                   className="flex-1 overflow-auto custom-scrollbar relative"
                   onScroll={(e) => { 
                     // Đồng bộ cuộn chuột giữa code và số dòng
