@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import * as mammoth from 'mammoth';
 import 'katex/dist/katex.min.css';
-import Latex from 'react-latex-next';
 import katex from 'katex';
 window.katex = katex;
 import BlockEditor from '../components/BlockEditor';
@@ -26,23 +25,60 @@ class SafeLatex extends Component {
     super(props);
     this.state = { hasError: false };
   }
+
   static getDerivedStateFromError(error) {
     return { hasError: true };
   }
+
+  renderMath(text) {
+    let processText = text;
+    if (typeof processText === 'string') {
+      // Ép các cú pháp \[ \] và \( \) về chuẩn $$ và $ của KaTeX
+      processText = processText.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+      processText = processText.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    } else {
+      return processText;
+    }
+
+    // Thuật toán tách các khối Toán học và Văn bản thường
+    const parts = processText.split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
+    
+    return parts.map((part, index) => {
+      try {
+        if (part.startsWith('$$') && part.endsWith('$$')) {
+          // Toán hiển thị giữa dòng (Display Mode)
+          const math = part.slice(2, -2);
+          const html = katex.renderToString(math, { 
+            displayMode: true, 
+            throwOnError: false, // BÍ KÍP: CÓ LỖI CŨNG KHÔNG BAO GIỜ SẬP WEB
+            macros: {"\\heva": "\\begin{cases} #1 \\end{cases}", "\\hoac": "\\left[\\begin{matrix} #1 \\end{matrix}\\right."} 
+          });
+          return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+        } else if (part.startsWith('$') && part.endsWith('$')) {
+          // Toán hiển thị cùng dòng (Inline Mode)
+          const math = part.slice(1, -1);
+          const html = katex.renderToString(math, { 
+            displayMode: false, 
+            throwOnError: false, 
+            macros: {"\\heva": "\\begin{cases} #1 \\end{cases}", "\\hoac": "\\left[\\begin{matrix} #1 \\end{matrix}\\right."} 
+          });
+          return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+        } else {
+          // Văn bản thông thường (Giữ nguyên các thẻ HTML)
+          return <span key={index} dangerouslySetInnerHTML={{ __html: part }} />;
+        }
+      } catch (e) {
+        // Nếu có lỗi parse dị biệt, bôi đỏ đoạn lỗi chứ không làm sập toàn bộ trang
+        return <span key={index} className="text-red-500 font-bold bg-red-50 px-1 rounded">{part}</span>;
+      }
+    });
+  }
+
   render() {
-    let safeText = this.props.children || "";
-    if (typeof safeText === 'string') {
-      safeText = safeText.replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$'); 
-      safeText = safeText.replace(/\\\(/g, '$$').replace(/\\\)/g, '$$');     
-    }
     if (this.state.hasError) {
-      return <span className="text-red-500 bg-red-50 px-2 py-1 rounded text-sm">{safeText}</span>;
+      return <span className="text-red-500 bg-red-50 px-2 py-1 rounded text-sm shadow-sm">⚠️ Lỗi hiển thị Toán</span>;
     }
-    return (
-      <Latex strict="ignore" macros={{"\\heva": "\\begin{cases} #1 \\end{cases}", "\\hoac": "\\left[\\begin{matrix} #1 \\end{matrix}\\right."}}>
-        {safeText}
-      </Latex>
-    );
+    return <span className="latex-container">{this.renderMath(this.props.children)}</span>;
   }
 }
 
