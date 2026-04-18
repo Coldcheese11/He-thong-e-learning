@@ -26,6 +26,12 @@ class SafeLatex extends Component {
     this.state = { hasError: false };
   }
 
+  // THÊM ĐOẠN NÀY ĐỂ CHỐNG LAG (NÓ SẼ CHẶN RENDER LẠI NẾU NỘI DUNG KHÔNG ĐỔI)
+  shouldComponentUpdate(nextProps, nextState) {
+    if (this.state.hasError !== nextState.hasError) return true;
+    return nextProps.children !== this.props.children;
+  }
+
   static getDerivedStateFromError(error) {
     return { hasError: true };
   }
@@ -512,8 +518,7 @@ const SmartUpload = () => {
                            .replace(/\\(?:textit|textbf|underline)\s*\{([\s\S]*?)\}/g, '$1');
 
     // Xử lý thông minh cho \immini để không bị dư ngoặc
-    cleanText = cleanText.replace(/\\immini(?:\[.*?\])?\s*\{([\s\S]*?)\}\s*\{\s*(\[⚠️.*?\])\s*\}/g, '$1\n$2')
-                         .replace(/\\immini(?:\[.*?\])?\s*/g, '');
+    cleanText = cleanText.replace(/\\immini(?:\[.*?\])?\s*/g, '');
 
     // =======================================================
     // 2. BẮT ĐẦU BÓC TÁCH CÂU HỎI
@@ -608,6 +613,7 @@ const SmartUpload = () => {
         for (let k = 0; k <= index; k++) {
              searchIdx = rawText.indexOf('\\begin{ex}', searchIdx + 1);
         }
+        const blockStartIdx = cleanText.indexOf(block);
         const lineIdx = searchIdx !== -1 ? rawText.substring(0, searchIdx).split('\n').length - 1 : 0;
 
         questions.push({ 
@@ -637,7 +643,9 @@ const SmartUpload = () => {
 
       // 3. THUẬT TOÁN ĐỌC TỪNG DÒNG (DÒNG NÀO RA DÒNG ĐÓ)
       const lines = cleanText.split('\n');
-      const rawLinesForSearch = rawText.split('\n'); 
+
+      const rawLinesForSearch = rawText.split('\n'); // 🔥 BẢN ĐỒ MỚI
+      let lastRawLineIdx = 0; // 🔥 Đánh dấu vị trí đã quét qua
 
       let currentState = 'IDLE'; 
       let currentQuestion = null; 
@@ -679,35 +687,39 @@ const SmartUpload = () => {
           continue;
         }
 
-       // B. BẮT ĐẦU CÂU HỎI MỚI
+      // B. BẮT ĐẦU CÂU HỎI MỚI
         const qMatch = line.match(regexQuestion);
         if (qMatch) {
           pushCurrentQuestion(); 
 
-          // 🔥 BÍ KÍP TỐI THƯỢNG: QUÉT DÒNG TRỰC TIẾP TỪ RAW CODE BẰNG REGEX 🔥
-          const qNum = qMatch[1]; // Lấy đúng cái số thứ tự câu (vd: 1, 2, 3)
-          let realLineIdx = i; // Mặc định
+          // 🔥 BÍ KÍP TRỊ BỆNH LỆCH DÒNG LŨY TIẾN 🔥
+          let realLineIdx = i; // Mặc định nếu xui lắm không tìm ra
+          // Tự động bóc tách đúng con số của câu hỏi (Ví dụ: "Câu 8:" -> Lấy số 8)
+          const numMatch = line.match(/^(?:Câu|Bài|Question)\s*(\d+)/i);
           
-          // Chấp nhận mọi rác như \textbf, \textit, khoảng trắng trước số câu
-          const searchRegex = new RegExp(`(?:Câu|Bài|Question)[^0-9]*${qNum}\\b`, 'i');
-          
-          for (let r = lastRawLineIdx; r < rawLinesForSearch.length; r++) {
-              if (searchRegex.test(rawLinesForSearch[r])) {
-                  realLineIdx = r;
-                  lastRawLineIdx = r; // Cập nhật vị trí để dò câu tiếp theo nhanh hơn
-                  break;
+          if (numMatch) {
+              const qNum = numMatch[1]; // Tự tay nắm lấy số (8, 9, 10...)
+              // Tìm đúng dòng chứa "Câu 8" trong file GỐC (Chấp nhận cả \textbf, \textit)
+              const searchRegex = new RegExp(`(?:Câu|Bài|Question)\\s*${qNum}(?!\\d)`, 'i');
+              
+              for (let r = lastRawLineIdx; r < rawLinesForSearch.length; r++) {
+                  if (searchRegex.test(rawLinesForSearch[r])) {
+                      realLineIdx = r;
+                      lastRawLineIdx = r; // Cắm cờ tại đây để câu sau tìm tiếp, không bị lùi lại
+                      break;
+                  }
               }
           }
 
           currentQuestion = {
             id: qCount++,
             type: currentSectionType,
-            content: qMatch[2].trim(),
+            content: qMatch[2] ? qMatch[2].trim() : '', 
             opt_a: '', opt_b: '', opt_c: '', opt_d: '',
             correct_opt: currentSectionType === 'true_false' ? 'F,F,F,F' : (currentSectionType === 'fill_blank' ? '' : 'A'),
             image_file: null, image_preview: null,
             isEditing: false,
-            lineIndex: realLineIdx // <-- ĐÃ SỬA THÀNH SỐ DÒNG CHUẨN XÁC 100%
+            lineIndex: realLineIdx // <-- TRẢ VỀ CON SỐ TUYỆT ĐỐI CHÍNH XÁC 100%
           };
           currentState = 'READING_QUESTION';
           continue;
@@ -974,6 +986,8 @@ const SmartUpload = () => {
       if ((fileType === 'word' || fileType === 'tex') && parsedQuestions.length > 0) {
         const questionsToInsert = await Promise.all(parsedQuestions.map(async (q) => {
           let imageUrl = null;
+          
+          // Ưu tiên 1: Nếu có file ảnh tải lên bằng tay
           if (q.image_file) {
             const imgExt = q.image_file.name.split('.').pop();
             const imgName = `q_img_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${imgExt}`;
@@ -982,18 +996,31 @@ const SmartUpload = () => {
               const { data: imgUrlData } = supabase.storage.from('class_documents').getPublicUrl(`questions/${imgName}`);
               imageUrl = imgUrlData.publicUrl;
             }
+          } 
+          // Ưu tiên 2: Nếu không có file nhưng có ảnh TikZ (chuỗi data:image/png;base64)
+          else if (q.image_preview && q.image_preview.startsWith('data:image')) {
+            try {
+              // Chuyển Base64 của TikZ thành File để upload
+              const base64Data = q.image_preview.split(',')[1];
+              const blob = await fetch(q.image_preview).then(res => res.blob());
+              const imgName = `tikz_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.png`;
+              
+              const { error: tikzUploadErr } = await supabase.storage.from('class_documents').upload(`questions/${imgName}`, blob, { contentType: 'image/png' });
+              if (!tikzUploadErr) {
+                const { data: imgUrlData } = supabase.storage.from('class_documents').getPublicUrl(`questions/${imgName}`);
+                imageUrl = imgUrlData.publicUrl;
+              }
+            } catch (e) { console.error("Lỗi upload TikZ:", e); }
           }
+
           return {
             content: q.content, 
-            opt_a: q.opt_a, 
-            opt_b: q.opt_b, 
-            opt_c: q.opt_c, 
-            opt_d: q.opt_d,
+            opt_a: q.opt_a, opt_b: q.opt_b, opt_c: q.opt_c, opt_d: q.opt_d,
             correct_opt: q.correct_opt, 
-            explanation: q.explanation,
+            explanation: q.explanation || '', // Phòng trường hợp null
             level: 'Trung bình', 
             subject_id: selectedSubject,
-            image_url: imageUrl,
+            image_url: imageUrl, // BÂY GIỜ ĐÃ LƯU ĐƯỢC CẢ ẢNH TIKZ
             question_type: q.type 
           };
         }));
@@ -1103,24 +1130,30 @@ const SmartUpload = () => {
                 {parsedQuestions.map((q, index) => (
                   <div 
                       key={index} 
-                     onClick={() => {
-                        // TỰ ĐỘNG CUỘN BẢNG CODE BÊN PHẢI TỚI ĐÚNG DÒNG
-                        if (q.lineIndex !== undefined) {
-                          setActiveLine(q.lineIndex); // Bật mũi tên chỉ đường ở cột đánh số
-                          const lineHeight = 20.8; // Chiều cao 1 dòng
-                          const targetScroll = Math.max(0, (q.lineIndex * lineHeight) - 40); // Trừ hao 40px cho dễ nhìn
+                     onClick={(e) => {
+                        e.stopPropagation();
+                        // TỰ ĐỘNG CUỘN BẢNG CODE BÊN PHẢI TỚI ĐÚNG DÒNG (CHUẨN 100%)
+                        if (fileType === 'tex' && q.lineIndex !== undefined) {
+                          setActiveLine(q.lineIndex); // Bật mũi tên xanh bên cột số
                           
-                          // 1. Ép cuộn khung bao bên ngoài (Phòng trường hợp thanh cuộn nằm ở Div)
-                          const outerContainer = document.querySelector('.custom-scrollbar.relative');
-                          if (outerContainer) outerContainer.scrollTop = targetScroll;
+                          const scrollContainer = document.querySelector('.custom-scrollbar.relative');
                           
-                          // 2. Ép cuộn trực tiếp khung gõ Code (Theo đúng code gốc của bạn)
-                          const editorElement = document.querySelector('.react-simple-code-editor__textarea');
-                          if (editorElement) editorElement.scrollTop = targetScroll;
-                          
-                          // 3. Ép cuộn luôn cột đánh số dòng bên trái cho đồng bộ
-                          if (lineNumbersRef.current) {
-                            lineNumbersRef.current.scrollTop = targetScroll;
+                          // Kiểm tra xem cột số dòng (Gutter) có tồn tại không
+                          if (scrollContainer && lineNumbersRef.current) {
+                            // 1. Tóm đúng cái thẻ <div> chứa số dòng hiện tại ở cột bên trái
+                            const lineElement = lineNumbersRef.current.children[q.lineIndex];
+                            
+                            if (lineElement) {
+                              // 2. Trình duyệt tự trả về tọa độ pixel thực tế của thẻ div đó
+                              const exactTop = lineElement.offsetTop;
+                              
+                              // Trừ hao 50px để dòng code không bị dính mép trên
+                              const targetTop = Math.max(0, exactTop - 50); 
+                              
+                              // 3. Cuộn cả bảng code và cột số dòng đến đúng pixel đó
+                              scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+                              lineNumbersRef.current.scrollTo({ top: targetTop, behavior: 'smooth' });
+                            }
                           }
                         }
                       }}
@@ -1322,7 +1355,9 @@ const SmartUpload = () => {
                       fontSize: 13,
                       minHeight: '100%',
                       lineHeight: '1.6',
-                      backgroundColor: '#ffffff'
+                      backgroundColor: '#ffffff',
+                      whiteSpace: 'pre',        // 🔥 BẮT BUỘC: Ép code nằm trên 1 đường thẳng ngang
+                      overflowWrap: 'normal'    // 🔥 BẮT BUỘC: Không cho tự động rớt dòng
                     }}
                     textareaClassName="focus:outline-none"
                   />
