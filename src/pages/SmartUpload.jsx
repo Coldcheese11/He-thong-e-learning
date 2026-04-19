@@ -1309,7 +1309,21 @@ const SmartUpload = () => {
                 <button 
                   onClick={() => {
                     const newResult = parseExamTextWithRegex(rawTexCode);
-                    setParsedQuestions(newResult);
+                    
+                    // 🔥 BÍ KÍP BẢO TỒN ẢNH: Nhặt ảnh từ mảng cũ đắp sang mảng mới
+                    const finalQuestions = newResult.map((newQ, idx) => {
+                      const oldQ = parsedQuestions[idx]; 
+                      if (oldQ) {
+                        return { 
+                          ...newQ, 
+                          image_file: oldQ.image_file, 
+                          image_preview: oldQ.image_preview 
+                        };
+                      }
+                      return newQ;
+                    });
+
+                    setParsedQuestions(finalQuestions);
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-2"
                 >

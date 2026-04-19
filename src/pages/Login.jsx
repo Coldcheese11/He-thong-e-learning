@@ -5,12 +5,13 @@ import { useNavigate } from 'react-router-dom';
 export default function Login() {
   const [entryMode, setEntryMode] = useState(null); 
   
-  const [phone, setPhone] = useState('');
+  // Đã chuyển sang dùng Email làm chuẩn
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState(''); // Chỉ dùng lúc đăng ký (Tùy chọn)
   const [fullName, setFullName] = useState('');
+  
   const [isRegister, setIsRegister] = useState(false);
   const [message, setMessage] = useState('');
-  
-  const [examCode, setExamCode] = useState('');
 
   const navigate = useNavigate(); 
 
@@ -19,13 +20,19 @@ export default function Login() {
     setMessage('Đang xử lý...');
 
     if (isRegister) {
+      // ĐĂNG KÝ BẰNG EMAIL
       const { data, error } = await supabase
         .from('users')
-        .insert([{ phone_number: phone, full_name: fullName, role: entryMode }])
+        .insert([{ 
+            email: email, 
+            phone_number: phone || null, 
+            full_name: fullName, 
+            role: entryMode 
+        }])
         .select();
       
       if (error) {
-        setMessage('❌ Lỗi: Số điện thoại này đã được đăng ký!');
+        setMessage('❌ Lỗi: Email này đã được đăng ký!');
       } else if (data && data.length > 0) {
         const newUser = data[0];
         setMessage('✅ Đăng ký thành công! Đang vào hệ thống...');
@@ -40,10 +47,11 @@ export default function Login() {
         }, 1000); 
       }
     } else {
+      // ĐĂNG NHẬP BẰNG EMAIL
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('phone_number', phone)
+        .eq('email', email) // Đã đổi điều kiện tìm kiếm thành email
         .single();
       
       if (data) {
@@ -60,34 +68,22 @@ export default function Login() {
         }, 1000);
 
       } else {
-        setMessage('❌ Không tìm thấy số điện thoại này! Vui lòng đăng ký.');
+        setMessage('❌ Không tìm thấy Email này! Vui lòng kiểm tra lại hoặc đăng ký.');
       }
     }
   };
 
-  const handleQuickTest = (e) => {
-    e.preventDefault();
-    if (!examCode.trim()) {
-      setMessage('⚠️ Vui lòng nhập mã đề thi!');
-      return;
-    }
-    navigate(`/quiz/${examCode.trim()}`); 
-  };
-
   // ==========================================
-  // GIAO DIỆN 1: MÀN HÌNH CHỌN VAI TRÒ (ĐÃ LÀM GỌN ĐẸP)
+  // GIAO DIỆN 1: MÀN HÌNH CHỌN VAI TRÒ
   // ==========================================
   if (entryMode === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-        {/* Thu hẹp khung chứa từ max-w-2xl xuống max-w-xl để các nút không bị bè ra */}
         <div className="w-full max-w-xl text-center">
           <h1 className="text-3xl md:text-4xl font-extrabold text-blue-600 mb-2">Hệ Thống Thi Trắc Nghiệm</h1>
           <p className="text-gray-500 mb-8 text-sm md:text-base">Vui lòng chọn vai trò của bạn để bắt đầu</p>
           
-          {/* Dùng sm:grid-cols-2 để tablet cũng chia 2 cột, gap nhỏ lại */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-5">
-            {/* Nút Học Sinh */}
             <button 
               onClick={() => setEntryMode('student')}
               className="group bg-white p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border-2 border-gray-100 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-100 transition-all duration-300 flex flex-col items-center"
@@ -96,10 +92,9 @@ export default function Login() {
                 <span className="text-3xl md:text-4xl">👨‍🎓</span>
               </div>
               <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-1">Tôi là Học Sinh</h2>
-              <p className="text-gray-500 text-xs md:text-sm px-2 leading-relaxed">Xem điểm, làm bài tập hoặc nhập mã thi nhanh.</p>
+              <p className="text-gray-500 text-xs md:text-sm px-2 leading-relaxed">Xem điểm, làm bài tập hoặc thi chính thức.</p>
             </button>
 
-            {/* Nút Giáo Viên */}
             <button 
               onClick={() => setEntryMode('teacher')}
               className="group bg-white p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border-2 border-gray-100 hover:border-indigo-400 hover:shadow-lg hover:shadow-indigo-100 transition-all duration-300 flex flex-col items-center"
@@ -141,25 +136,40 @@ export default function Login() {
           </h2>
 
           <form onSubmit={handleAuth} className="flex flex-col space-y-3.5 md:space-y-4">
-            {isRegister && (
-              <div>
-                <label className="mb-1 block text-xs md:text-sm font-medium text-gray-700">Họ và Tên</label>
-                <input
-                  type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 p-3 md:p-3.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm md:text-base"
-                  placeholder="VD: Nguyễn Văn A"
-                />
-              </div>
-            )}
-
+            
+            {/* EMAIL (BẮT BUỘC CHO CẢ ĐĂNG NHẬP VÀ ĐĂNG KÝ) */}
             <div>
-              <label className="mb-1 block text-xs md:text-sm font-medium text-gray-700">Số điện thoại</label>
+              <label className="mb-1 block text-xs md:text-sm font-medium text-gray-700">Email của bạn *</label>
               <input
-                type="text" required value={phone} onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 p-3 md:p-3.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none font-mono text-base md:text-lg tracking-wider transition-all"
-                placeholder="09..."
+                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-xl border border-gray-300 p-3 md:p-3.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm md:text-base"
+                placeholder="VD: nguyenvan_a@gmail.com"
               />
             </div>
+
+            {isRegister && (
+              <>
+                {/* HỌ TÊN (BẮT BUỘC) */}
+                <div>
+                  <label className="mb-1 block text-xs md:text-sm font-medium text-gray-700">Họ và Tên *</label>
+                  <input
+                    type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 p-3 md:p-3.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm md:text-base"
+                    placeholder="VD: Nguyễn Văn A"
+                  />
+                </div>
+                
+                {/* SỐ ĐIỆN THOẠI (TÙY CHỌN) */}
+                <div>
+                  <label className="mb-1 block text-xs md:text-sm font-medium text-gray-700">Số điện thoại (Tùy chọn)</label>
+                  <input
+                    type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 p-3 md:p-3.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none tracking-wider transition-all text-sm md:text-base"
+                    placeholder="09..."
+                  />
+                </div>
+              </>
+            )}
 
             <button type="submit" className={`mt-2 rounded-xl p-3 md:p-3.5 text-white font-bold text-base md:text-lg transition-colors shadow-md ${entryMode === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}>
               {isRegister ? 'Đăng Ký Ngay' : 'Đăng Nhập'}
@@ -175,35 +185,24 @@ export default function Login() {
           <div className="mt-5 md:mt-6 text-center text-xs md:text-sm text-gray-600 border-b border-gray-100 pb-5 md:pb-6">
             {isRegister ? 'Đã có tài khoản? ' : 'Chưa có tài khoản? '}
             <button
-              onClick={() => { setIsRegister(!isRegister); setMessage(''); setPhone(''); setFullName(''); }}
+              onClick={() => { setIsRegister(!isRegister); setMessage(''); }}
               className="font-bold text-blue-600 hover:underline"
             >
               {isRegister ? 'Đăng nhập ngay' : 'Đăng ký mới'}
             </button>
           </div>
 
-          {/* KHU VỰC THI THỬ CHO HỌC SINH */}
-          {entryMode === 'student' && !isRegister && (
-            <div className="mt-5 md:mt-6 pt-2">
-              <div className="text-center mb-3 md:mb-4">
-                <span className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest bg-white px-2">Hoặc</span>
-              </div>
-              <h3 className="font-bold text-gray-800 text-center mb-2 md:mb-3 text-sm md:text-base">Vào thi nhanh bằng Mã Đề</h3>
-              <form onSubmit={handleQuickTest} className="flex gap-2">
-                <input
-                  type="text"
-                  value={examCode}
-                  onChange={(e) => setExamCode(e.target.value.toUpperCase())}
-                  placeholder="Nhập mã đề..."
-                  className="flex-1 rounded-xl border border-gray-300 p-2.5 md:p-3 focus:border-green-500 focus:ring-2 focus:ring-green-100 focus:outline-none font-bold uppercase text-sm md:text-base"
-                />
-                <button 
-                  type="submit" 
-                  className="bg-green-500 hover:bg-green-600 text-white font-bold px-4 md:px-5 rounded-xl transition-colors shadow-md shadow-green-200 text-sm md:text-base"
+          {/* GIAO DIỆN MỚI: NÚT THI THỬ DÀNH CHO KHÁCH VÀ HỌC SINH */}
+          {!isRegister && entryMode === 'student' && (
+            <div className="mt-6 pt-2 text-center">
+              <h3 className="text-base font-semibold text-gray-700 mb-1">Bạn muốn thi thử?</h3>
+              <p className="text-xs text-gray-500 mb-4">Trải nghiệm hệ thống không cần tạo tài khoản</p>
+             <button 
+                  onClick={() => navigate('/dashboard')} 
+                  className="w-full bg-indigo-50 text-indigo-600 font-bold py-3 md:py-3.5 rounded-xl hover:bg-indigo-100 transition-all border border-indigo-100"
                 >
-                  Vào Thi
-                </button>
-              </form>
+                🏠 Vào Trang Chủ (Khách)
+              </button>
             </div>
           )}
 

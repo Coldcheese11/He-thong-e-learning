@@ -119,12 +119,20 @@ export default function Quiz() {
 
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
-  useEffect(() => {
+ useEffect(() => {
     const loadData = async () => {
       try {
-        const studentId = localStorage.getItem('user_id');
+        // 🔥 1. CẬP NHẬT LẠI CÁCH LẤY ID NGƯỜI THI
+        const realUserId = localStorage.getItem('user_id');
+        const guestData = JSON.parse(sessionStorage.getItem('current_guest'));
+        
+        // Ưu tiên User thật, nếu không có thì lấy ID của Khách (guest_...)
+        const studentId = realUserId || (guestData ? guestData.id : null);
+
+        // Nếu không có cả 2 (nghĩa là ai đó cố tình gõ link lén vào phòng thi) thì mới đuổi ra
         if (!studentId) { navigate('/login'); return; }
 
+        // 2. Kiểm tra xem người này đã thi chưa
         const { data: existingAttempt } = await supabase
           .from('student_attempts')
           .select('*')
@@ -205,7 +213,12 @@ export default function Quiz() {
   const handleSubmit = async (isAutoSubmit = false) => {
     if (!isAutoSubmit && !window.confirm("Xác nhận nộp bài?")) return;
     setLoading(true);
-    const studentId = localStorage.getItem('user_id'); 
+    
+    // 🔥 CẬP NHẬT TẠI ĐÂY: Lấy ID thật hoặc ID Khách ảo để lưu điểm
+    const realUserId = localStorage.getItem('user_id'); 
+    const guestData = JSON.parse(sessionStorage.getItem('current_guest'));
+    const studentId = realUserId || (guestData ? guestData.id : null);
+
     let correctCount = 0;
     questions.forEach((q, index) => {
       if (answers[index + 1] === q.question_bank.correct_opt) correctCount++;
@@ -214,11 +227,18 @@ export default function Quiz() {
 
     try {
       await supabase.from('student_attempts').insert([{
-        exam_id: id, student_id: studentId, status: 'submitted', total_score: finalScore,
+        exam_id: id, 
+        student_id: studentId, // Đã dùng ID mới ở đây
+        status: 'submitted', 
+        total_score: finalScore,
         answers_json: { studentAnswers: answers }
       }]);
+      // Khi chuyển sang trang kết quả, bạn có thể truyền thêm tên của người thi (guestData?.name) nếu cần
       navigate('/result', { state: { score: finalScore, correct: correctCount, total: questions.length, questions, studentAnswers: answers, examTitle: exam?.title } });
-    } catch (error) { setLoading(false); }
+    } catch (error) { 
+      console.error("Lỗi khi nộp bài:", error);
+      setLoading(false); 
+    }
   };
 
   if (loading) return <div className="p-10 text-center animate-pulse">Đang tải dữ liệu phòng thi...</div>;

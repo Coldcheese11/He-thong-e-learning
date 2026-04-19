@@ -3,8 +3,86 @@ import { useNavigate } from 'react-router-dom';
 import { Play, Clock, BookOpen, User, LogOut, FileText, Globe, ChevronDown, Home, Users, FolderHeart, GraduationCap, BellRing } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
+// ==========================================
+// COMPONENT POPUP: LẤY THÔNG TIN KHÁCH (GUEST)
+// ==========================================
+function GuestInfoModal({ roomCode, onClose, navigate }) {
+  const [guestInfo, setGuestInfo] = useState({ name: '', classStr: '', email: '' });
+
+  const handleStartExam = () => {
+    if (!guestInfo.name || !guestInfo.classStr) {
+      alert("⚠️ Vui lòng điền Họ Tên và Lớp để giáo viên ghi nhận điểm nhé!");
+      return;
+    }
+
+    // 🔥 BÍ KÍP TRỊ TRẮNG TRANG: Tạo một Profile Khách Ảo lưu vào Session
+    const guestProfile = {
+      id: `guest_${Date.now()}`, // Tạo ID ảo độc nhất
+      name: guestInfo.name,
+      class: guestInfo.classStr,
+      email: guestInfo.email || 'Không cung cấp',
+      isGuest: true
+    };
+    
+    // Lưu vào bộ nhớ tạm của trình duyệt
+    sessionStorage.setItem('current_guest', JSON.stringify(guestProfile));
+
+    // Điều hướng vào phòng thi
+    navigate(`/quiz/${roomCode}`);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <div className="bg-white rounded-3xl p-8 w-full max-w-md relative shadow-2xl animate-in fade-in zoom-in duration-200">
+        <button onClick={onClose} className="absolute top-5 right-5 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 p-2 rounded-full transition-all">✖</button>
+        
+        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <User size={32} />
+        </div>
+        <h2 className="text-2xl font-black text-center text-gray-800 mb-2">Thông tin thí sinh</h2>
+        <p className="text-sm text-center text-gray-500 mb-6 border-b pb-6">Vui lòng điền thông tin để giáo viên ghi nhận kết quả cho mã đề <strong className="text-blue-600 uppercase">{roomCode}</strong></p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">Họ và tên *</label>
+            <input type="text" required
+              onChange={e => setGuestInfo({...guestInfo, name: e.target.value})}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" 
+              placeholder="VD: Nguyễn Văn A" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">Lớp học *</label>
+            <input type="text" required
+              onChange={e => setGuestInfo({...guestInfo, classStr: e.target.value})}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all uppercase" 
+              placeholder="VD: 12A1" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">Email (Tùy chọn)</label>
+            <input type="email" 
+              onChange={e => setGuestInfo({...guestInfo, email: e.target.value})}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" 
+              placeholder="Dùng để nhận kết quả thi" />
+          </div>
+          
+          <button onClick={handleStartExam} className="w-full bg-blue-600 text-white font-bold text-lg py-4 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all mt-4">
+            BẮT ĐẦU THI NGAY
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ==========================================
+// COMPONENT CHÍNH: DASHBOARD
+// ==========================================
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [isGuest, setIsGuest] = useState(true); // 🔥 STATE MỚI: Kiểm tra xem có phải khách không
+  const [showGuestModal, setShowGuestModal] = useState(false); // 🔥 STATE MỚI: Ẩn/hiện popup
+
   const [examCode, setExamCode] = useState('');
   const [history, setHistory] = useState([]);
   const [userName, setUserName] = useState('Học sinh');
@@ -14,11 +92,20 @@ export default function Dashboard() {
   const [activeSubject, setActiveSubject] = useState('all');
   const [classCode, setClassCode] = useState('');
 
-  // STATE MỚI: BÀI TẬP ĐƯỢC GIAO & LỚP HỌC ĐÃ THAM GIA
   const [assignedExams, setAssignedExams] = useState([]);
   const [myJoinedClasses, setMyJoinedClasses] = useState([]);
 
   useEffect(() => {
+    const studentId = localStorage.getItem('user_id');
+    
+    // NẾU LÀ KHÁCH (CHƯA ĐĂNG NHẬP) -> DỪNG LẠI KHÔNG FETCH DATA GÌ CẢ
+    if (!studentId) {
+      setIsGuest(true);
+      return;
+    }
+
+    // NẾU ĐÃ ĐĂNG NHẬP -> TẢI DATA BÌNH THƯỜNG
+    setIsGuest(false);
     const storedName = localStorage.getItem('user_name');
     if (storedName) setUserName(storedName);
 
@@ -27,72 +114,57 @@ export default function Dashboard() {
     fetchAssignedExams();
   }, []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = async () => { /* Giữ nguyên code cũ */
     const studentId = localStorage.getItem('user_id');
     if (!studentId) return;
-
-    const { data } = await supabase
-      .from('student_attempts')
-      .select('id, total_score, end_time, exams ( title )')
-      .eq('student_id', studentId)
-      .order('end_time', { ascending: false });
-    
+    const { data } = await supabase.from('student_attempts').select('id, total_score, end_time, exams ( title )').eq('student_id', studentId).order('end_time', { ascending: false });
     if (data) setHistory(data);
   };
 
-  const fetchPublicData = async () => {
+  const fetchPublicData = async () => { /* Giữ nguyên code cũ */
     const { data: subData } = await supabase.from('subjects').select('*').order('created_at', { ascending: true });
     if (subData) setSubjects(subData);
-
-    const { data: examData } = await supabase
-      .from('exams')
-      .select('*, subjects(name)')
-      .eq('is_public', true) 
-      .limit(10);
+    const { data: examData } = await supabase.from('exams').select('*, subjects(name)').eq('is_public', true).limit(10);
     if (examData) setPublicExams(examData);
   };
 
-  const fetchAssignedExams = async () => {
+  const fetchAssignedExams = async () => { /* Giữ nguyên code cũ */
     const studentId = localStorage.getItem('user_id');
     if (!studentId) return;
-
     try {
-      // 1. Lấy danh sách lớp đã tham gia
       const { data: myClasses } = await supabase.from('class_members').select('class_id, classes(id, name, invite_code)').eq('student_id', studentId);
       if (!myClasses || myClasses.length === 0) return;
       setMyJoinedClasses(myClasses.map(c => c.classes));
       const classIds = myClasses.map(c => c.class_id);
 
-      // 2. Lấy danh sách ID các bài thi mà học sinh đã nộp rồi
       const { data: attemptedExams } = await supabase.from('student_attempts').select('exam_id').eq('student_id', studentId);
       const attemptedIds = attemptedExams?.map(a => a.exam_id) || [];
 
-      // 3. Kéo bài thi được giao
-      const { data: assignments } = await supabase
-        .from('exam_assignments')
-        .select('*, exams(*, subjects(name)), classes(name)')
-        .in('class_id', classIds)
-        .order('assigned_at', { ascending: false });
-
+      const { data: assignments } = await supabase.from('exam_assignments').select('*, exams(*, subjects(name)), classes(name)').in('class_id', classIds).order('assigned_at', { ascending: false });
       if (assignments) {
-        // Lọc bỏ bài đã làm
         const todoExams = assignments.filter(assign => !attemptedIds.includes(assign.exam_id));
         setAssignedExams(todoExams);
       }
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleJoinExam = (e) => {
     e.preventDefault();
     if (!examCode.trim()) return alert("Vui lòng nhập mã đề thi!");
-    navigate(`/quiz/${examCode.trim()}`);
+    
+    if (isGuest) {
+      // NẾU LÀ KHÁCH -> MỞ BẢNG HỎI TÊN, LỚP
+      setShowGuestModal(true);
+    } else {
+      // NẾU ĐÃ ĐĂNG NHẬP -> VÀO THẲNG PHÒNG THI
+      navigate(`/quiz/${examCode.trim()}`);
+    }
   };
 
   const handleLogout = () => {
     localStorage.clear();
-    navigate('/');
+    sessionStorage.clear();
+    setIsGuest(true); // Đăng xuất xong biến thành Khách luôn
   };
 
   const formatDate = (dateString) => {
@@ -105,37 +177,84 @@ export default function Dashboard() {
     if (element) element.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleJoinClass = async (e) => {
+  const handleJoinClass = async (e) => { /* Giữ nguyên code cũ */
     e.preventDefault();
     const studentId = localStorage.getItem('user_id');
     if (!classCode.trim()) return;
-
     try {
-      const { data: classData, error: classError } = await supabase
-        .from('classes')
-        .select('id, name')
-        .eq('invite_code', classCode.trim().toUpperCase())
-        .single();
-
+      const { data: classData, error: classError } = await supabase.from('classes').select('id, name').eq('invite_code', classCode.trim().toUpperCase()).single();
       if (classError || !classData) throw new Error("Mã lớp không tồn tại!");
-
-      const { error: joinError } = await supabase
-        .from('class_members')
-        .insert([{ class_id: classData.id, student_id: studentId }]);
-
+      const { error: joinError } = await supabase.from('class_members').insert([{ class_id: classData.id, student_id: studentId }]);
       if (joinError) {
         if (joinError.code === '23505') throw new Error("Bạn đã ở trong lớp này rồi!");
         throw joinError;
       }
-
       alert(`🎉 Chúc mừng! Bạn đã tham gia lớp: ${classData.name}`);
       setClassCode('');
-      fetchAssignedExams(); // Tải lại danh sách bài tập và lớp ngay lập tức
-    } catch (error) {
-      alert("❌ " + error.message);
-    }
+      fetchAssignedExams();
+    } catch (error) { alert("❌ " + error.message); }
   };
 
+
+  // ==========================================
+  // VIEW 1: DÀNH CHO KHÁCH (CHƯA ĐĂNG NHẬP)
+  // ==========================================
+  if (isGuest) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center relative">
+        {/* Navbar Siêu Nhỏ Cho Khách */}
+        <nav className="absolute top-0 w-full px-6 py-4 flex justify-between items-center z-10">
+          <div className="bg-blue-600 text-white px-3 py-2 rounded-xl font-black text-xl tracking-tight shadow-md">
+            HệThốngThi
+          </div>
+          <button 
+            onClick={() => navigate('/')}
+            className="bg-white text-blue-600 px-5 py-2 rounded-xl font-bold shadow-sm hover:shadow-md border border-gray-100 transition-all"
+          >
+            Đăng Nhập / Đăng Ký
+          </button>
+        </nav>
+
+        {/* Khung nhập mã thi ở giữa màn hình */}
+        <div className="w-full max-w-3xl px-4">
+          <section className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-[2.5rem] shadow-2xl p-10 md:p-16 text-center text-white relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+            <div className="relative z-10">
+              <h1 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">Kiểm tra năng lực của bạn</h1>
+              <p className="text-blue-100 mb-10 max-w-xl mx-auto text-lg">Nhập mã đề thi do giáo viên cung cấp vào ô bên dưới để bắt đầu làm bài kiểm tra ngay lập tức.</p>
+              
+              <form onSubmit={handleJoinExam} className="max-w-xl mx-auto flex flex-col sm:flex-row gap-3 bg-white p-2 rounded-2xl shadow-2xl">
+                <input 
+                  type="text" 
+                  placeholder="Nhập mã đề thi (VD: 123456...)"
+                  value={examCode}
+                  onChange={(e) => setExamCode(e.target.value.toUpperCase())}
+                  className="flex-1 px-6 py-4 rounded-xl text-gray-800 focus:outline-none font-mono text-lg placeholder-gray-400 uppercase tracking-widest text-center sm:text-left bg-transparent"
+                />
+                <button type="submit" className="bg-blue-600 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 flex items-center justify-center gap-2 shadow-md transition-all">
+                  <Play fill="currentColor" size={20} /> VÀO THI
+                </button>
+              </form>
+            </div>
+          </section>
+        </div>
+
+        {/* Modal nhập thông tin Khách */}
+        {showGuestModal && (
+          <GuestInfoModal 
+            roomCode={examCode.trim()} 
+            onClose={() => setShowGuestModal(false)} 
+            navigate={navigate}
+          />
+        )}
+      </div>
+    );
+  }
+
+
+  // ==========================================
+  // VIEW 2: DÀNH CHO HỌC SINH ĐÃ ĐĂNG NHẬP (CODE CŨ)
+  // ==========================================
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -221,7 +340,7 @@ export default function Dashboard() {
                 placeholder="Nhập mã đề thi (VD: 123e4567...)"
                 value={examCode}
                 onChange={(e) => setExamCode(e.target.value)}
-                className="flex-1 px-6 py-4 rounded-xl text-gray-800 focus:outline-none font-mono text-lg placeholder-gray-400 bg-transparent"
+                className="flex-1 px-6 py-4 rounded-xl text-gray-800 focus:outline-none font-mono text-lg placeholder-gray-400 bg-transparent uppercase"
               />
               <button type="submit" className="bg-blue-600 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 flex items-center justify-center gap-2 shadow-md transition-all">
                 <Play fill="currentColor" size={20} /> VÀO THI
